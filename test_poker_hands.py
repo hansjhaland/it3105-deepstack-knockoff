@@ -211,7 +211,12 @@ if __name__ == "__main__":
         Card('H', 10)
     ]
     
-    num_opponents = 1
-    num_rollouts = 10000
+    num_opponents = 4
+    num_rollouts = 100
     
     print(po.rollout_hole_pair_evaluator(hole_pair, public_cards, num_opponents, num_rollouts))
+    
+    
+    cheat_sheet = po.poker_cheat_sheet_generator(3, 100)
+    for row in cheat_sheet:
+        print(row)

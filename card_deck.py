@@ -21,10 +21,13 @@ class Card:
     
     
 class CardDeck:
+    
         def __init__(self):
+            self.suits = ['S', 'H', 'D', 'C']
+            self.ranks = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
             self.cards = []
-            for suit in ['S', 'H', 'D', 'C']:
-                for rank in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]:
+            for suit in self.suits:
+                for rank in self.ranks:
                     self.cards.append(Card(suit, rank))
                     
         def __str__(self):
@@ -41,6 +44,12 @@ class CardDeck:
                 self.cards = [deck_card for deck_card in self.cards 
                               if not (deck_card.get_rank() == exclude_card.get_rank()
                                       and deck_card.get_suit() == exclude_card.get_suit())]
+                
+        def get_suits(self):
+            return self.suits
+        
+        def get_ranks(self):
+            return self.ranks
         
         
         

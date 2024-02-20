@@ -1,5 +1,6 @@
 from card_deck import Card, CardDeck
 from itertools import combinations
+import random
 
 
 class PokerOracle:
@@ -191,7 +192,47 @@ class PokerOracle:
             
         hole_pair_win_probability = num_rollout_wins / rollout_count
         return hole_pair_win_probability
+    
+    def poker_cheat_sheet_generator(self, num_opponents: int, num_rollouts: int) -> list[list[float]]:
+        card_deck = CardDeck()
+        hole_pair_types: dict[list[Card]] = {}
+        deck: list[Card] = card_deck.cards
+        for card1 in deck:
+            for card2 in deck:
+                # TODO: Maybe create own method for converting a pair of cards to a type?
+                if card1 == card2:
+                    continue
+                if card1.get_rank() == card2.get_rank():
+                    pair_type_key = str(card1.get_rank()) + "_pair"
+                elif card1.get_suit() == card2.get_suit():
+                    pair_type_key = str(card1.get_rank()) + "_" + str(card1.get_rank()) + "_suited"
+                else: 
+                    pair_type_key = str(card1.get_rank()) + "_" + str(card1.get_rank()) + "_unsuited"
+                hole_pair = [card1, card2]
+                if pair_type_key in hole_pair_types.keys():
+                    hole_pair_types[pair_type_key].append(hole_pair)
+                else:
+                    hole_pair_types[pair_type_key] = [hole_pair]
+        
+        cheat_sheet: list[list[float]] = []
+        pair_types = list(hole_pair_types.keys())
+        num_pair_types = len(pair_types)
+        print(num_pair_types) # TODO: NUMBER OF TYPES ARE 39. SHOULD BE 169!!!
+        for i in range(num_pair_types):
+            cheat_sheet.append([])
+            random_hole_pair = random.choice(hole_pair_types[pair_types[i]])
+            for _ in range(num_opponents):
+                winning_probability = self.rollout_hole_pair_evaluator(random_hole_pair, None, num_opponents, num_rollouts)
+                cheat_sheet[i].append(winning_probability)
                 
+        return cheat_sheet
+    
+    def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int) -> float:
+        pass
+        
+    def get_hole_pair_type(self, hole_pair: list[Card]) -> str:
+        pass
+        
 
 if __name__ == "__main__":
 
