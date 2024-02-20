@@ -17,12 +17,13 @@ class PokerOracle:
                               "high_card": 10}
     
     # NOTE: Easiest to evaluate set of 5 cards.
-    # Can define code for this and do recursive calls
-    # for cases with 6 or 7 cards, 5 cards at a time
+    # Sets of 6 or 7 cards will be split into all possible sets 
+    # of 5 cards. Each of these are evaluated and the best
+    # classification is returned.
     def hand_classifier(self, card_set: list[Card]) -> tuple[str, int]: 
         num_cards = len(card_set)
         classification = ""
-        ranking = 100 # Arbitrary initial value
+        ranking = 100 # Arbitrary initial value. Lower hand ranking is better
         if not num_cards == 5:
             subsets = self.get_all_five_card_subsets(card_set)
             best_subset = None
@@ -127,7 +128,8 @@ class PokerOracle:
         # NOTE: Assumes full house is checked before this
         num_each_rank = self.count_ranks(card_set)
         return 3 in num_each_rank
-        
+    
+    # TODO: Currently not handlig cases of ties (When highcard also ties, P2 wins)!
     def evaluate_showdown(self, public_cards: list[Card], p1_hole_cards: list[Card], p2_hole_cards: list[Card]) -> int:
         # NOTE: For hand rankings, lower rank is better
         p1_win = 1
@@ -146,10 +148,53 @@ class PokerOracle:
         if p1_highest_card.get_rank() > p2_highest_card.get_rank():
             return p1_win
         return p2_win
+    
+    # TODO: Sometimes returns a 0 probability for win. Is this realistic?
+    def rollout_hole_pair_evaluator(self, hole_pair: list[Card], public_cards: list[Card] | None, num_opponents: int, rollout_count: int) -> float:
+        exclude_from_deck = [*hole_pair]
+        num_public_cards_to_deal = 5
+        dealt_public_cards = []
+        num_rollout_wins = 0
+        if public_cards is not None:
+            dealt_public_cards = [*public_cards]
+            num_public_cards_to_deal -= len(public_cards)
+            [exclude_from_deck.append(card) for card in public_cards]
+        for _ in range(rollout_count):
+            # Generate card deck with known private and public card excluded
+            card_deck = CardDeck()
+            card_deck.exclude(exclude_from_deck)
+            card_deck.shuffle()
+            
+            # Reset opponents hole cards and deal random cards to each opponent
+            all_opponents_hole_cards = []
+            for _ in range(num_opponents):
+                opponent_hole_cards = card_deck.deal(2)
+                all_opponents_hole_cards.append(opponent_hole_cards)
+                
+            # Reset public cards and deal out remaining public cards
+            dealt_public_cards = []
+            if public_cards is not None:
+                dealt_public_cards = [*public_cards]   
+            if not num_public_cards_to_deal == 0:
+                new_public_cards = card_deck.deal(num_public_cards_to_deal)
+                dealt_public_cards = [*dealt_public_cards, *new_public_cards]
+                
+            win_rollout = True
+            # Assumes win when hole_pair beats all opponents
+            for opponent_hole_cards in all_opponents_hole_cards:
+                winner = self.evaluate_showdown(dealt_public_cards, hole_pair, opponent_hole_cards)
+                if winner == 2:
+                    win_rollout = False
+                    break
+            if win_rollout:
+                num_rollout_wins += 1
+            
+        hole_pair_win_probability = num_rollout_wins / rollout_count
+        return hole_pair_win_probability
+                
 
 if __name__ == "__main__":
-    # TODO: TESTING! Generate 2 cases of each (ish) poker hand, compare different
-    # combinaitions of hands and decide who wins.
+
     poker_oracle = PokerOracle()
     card_deck = CardDeck()
     card_deck.shuffle()

@@ -36,8 +36,11 @@ class CardDeck:
         def deal(self, n):
             return [self.cards.pop() for _ in range(n)]
         
-        def exclude(self, card):
-            pass
+        def exclude(self, cards: list[Card]):
+            for exclude_card in cards:
+                self.cards = [deck_card for deck_card in self.cards 
+                              if not (deck_card.get_rank() == exclude_card.get_rank()
+                                      and deck_card.get_suit() == exclude_card.get_suit())]
         
         
         

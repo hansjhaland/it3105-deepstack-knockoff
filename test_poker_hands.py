@@ -196,3 +196,22 @@ if __name__ == "__main__":
     
     # P2 should win
     print(po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards))
+    
+    # Test rollout evaluation
+    public_cards = [
+        Card('D',11),
+        Card('S',12),
+        Card('C',13),
+        Card('C',2),
+        Card('H', 4)
+    ]
+    
+    hole_pair = [
+        Card('S', 14),
+        Card('H', 10)
+    ]
+    
+    num_opponents = 1
+    num_rollouts = 10000
+    
+    print(po.rollout_hole_pair_evaluator(hole_pair, public_cards, num_opponents, num_rollouts))
