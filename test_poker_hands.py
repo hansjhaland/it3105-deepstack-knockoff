@@ -218,5 +218,7 @@ if __name__ == "__main__":
     
     
     cheat_sheet = po.poker_cheat_sheet_generator(3, 100)
-    for row in cheat_sheet:
-        print(row)
+    for key in list(cheat_sheet.keys()):
+        print(key, cheat_sheet[key])
+        
+    print(po.get_cheat_sheet_hole_pair_probabilitiy(hole_pair, 2, cheat_sheet))

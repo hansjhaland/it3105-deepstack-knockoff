@@ -193,7 +193,7 @@ class PokerOracle:
         hole_pair_win_probability = num_rollout_wins / rollout_count
         return hole_pair_win_probability
     
-    def poker_cheat_sheet_generator(self, num_opponents: int, num_rollouts: int) -> list[list[float]]:
+    def poker_cheat_sheet_generator(self, max_num_opponents: int, num_rollouts: int) -> list[list[float]]:
         card_deck = CardDeck()
         hole_pair_types: dict[list[Card]] = {}
         deck: list[Card] = card_deck.cards
@@ -206,6 +206,8 @@ class PokerOracle:
                 if card1.get_rank() == card2.get_rank():
                     pair_type_key = str(card1.get_rank()) + "_pair"
                 else:
+                    # NOTE: Sort the ranks to make sure that e.g. both rank pairs (10,9) and (9,10)
+                    # results in key 10_9_suited
                     sorted_ranks = sorted([card1.get_rank(), card2.get_rank()])
                     if card1.get_suit() == card2.get_suit():
                         pair_type_key = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_suited"
@@ -217,26 +219,46 @@ class PokerOracle:
                 else:
                     hole_pair_types[pair_type_key] = [hole_pair]
         
-        cheat_sheet: list[list[float]] = []
+        cheat_sheet: dict[list[float]] = {}
         pair_types = list(hole_pair_types.keys())
-        num_pair_types = len(pair_types)
-        print(num_pair_types)
-        for i in range(num_pair_types):
-            cheat_sheet.append([])
-            random_hole_pair = random.choice(hole_pair_types[pair_types[i]])
-            for _ in range(num_opponents):
+        print("Number of pair types:", len(pair_types))
+        for pair_type in pair_types:
+            cheat_sheet[pair_type] = []
+            random_hole_pair = random.choice(hole_pair_types[pair_type])
+            for i in range(max_num_opponents):
+                num_opponents = i + 1
                 winning_probability = self.rollout_hole_pair_evaluator(random_hole_pair, None, num_opponents, num_rollouts)
-                cheat_sheet[i].append(winning_probability)
+                cheat_sheet[pair_type].append(winning_probability)
         
         # TODO: Shoul also return a mapping from keys to index in cheat_sheet
         return cheat_sheet
     
-    def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int) -> float:
-        pass
+    def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int, 
+                                               cheat_sheet: dict[list[float]]) -> float:
+        hole_pair_type = self.get_hole_pair_type(hole_pair)
+        num_opponents_index = num_opponents - 1
+        win_probability = cheat_sheet[hole_pair_type][num_opponents_index]
+        return win_probability
+        
         
     def get_hole_pair_type(self, hole_pair: list[Card]) -> str:
-        pass
+        card1 = hole_pair[0]
+        card2 = hole_pair[1]
+        pair_type = ""
+        if card1.get_rank() == card2.get_rank():
+            pair_type = str(card1.get_rank()) + "_pair"
+        else:
+            # NOTE: Sort the ranks to make sure that e.g. both rank pairs (10,9) and (9,10)
+            # results in key 10_9_suited
+            sorted_ranks = sorted([card1.get_rank(), card2.get_rank()])
+            if card1.get_suit() == card2.get_suit():
+                pair_type = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_suited"
+            else: 
+                pair_type = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_unsuited"
+        return pair_type
         
+    def utility_matrix_generator(self):
+        pass
 
 if __name__ == "__main__":
 

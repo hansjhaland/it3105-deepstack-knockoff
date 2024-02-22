@@ -21,6 +21,8 @@ class Card:
     
     
 class CardDeck:
+        # TODO: May be necessary to implement a "limited card deck" for less computation.
+        # Could create a specializaition of this class.
     
         def __init__(self):
             self.suits = ['S', 'H', 'D', 'C']
