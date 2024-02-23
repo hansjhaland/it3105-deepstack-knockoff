@@ -216,9 +216,13 @@ if __name__ == "__main__":
     
     print(po.rollout_hole_pair_evaluator(hole_pair, public_cards, num_opponents, num_rollouts))
     
+    utility_matrix, hole_pair_keys = po.utility_matrix_generator(public_cards)
     
-    cheat_sheet = po.poker_cheat_sheet_generator(3, 100)
-    for key in list(cheat_sheet.keys()):
-        print(key, cheat_sheet[key])
+    for key in list(utility_matrix.keys()):
+        print(key, utility_matrix[key])
+    
+    # cheat_sheet = po.poker_cheat_sheet_generator(3, 100)
+    # for key in list(cheat_sheet.keys()):
+    #     print(key, cheat_sheet[key])
         
-    print(po.get_cheat_sheet_hole_pair_probabilitiy(hole_pair, 2, cheat_sheet))
+    # print(po.get_cheat_sheet_hole_pair_probabilitiy(hole_pair, 2, cheat_sheet))
