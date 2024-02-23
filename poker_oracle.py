@@ -130,11 +130,11 @@ class PokerOracle:
         num_each_rank = self.count_ranks(card_set)
         return 3 in num_each_rank
     
-    # TODO: Currently not handlig cases of ties (When highcard also ties, P2 wins)!
     def evaluate_showdown(self, public_cards: list[Card], p1_hole_cards: list[Card], p2_hole_cards: list[Card]) -> int:
         # NOTE: For hand rankings, lower rank is better
         p1_win = 1
         p2_win = 2
+        tie = 0
         p1_card_set = [*public_cards, *p1_hole_cards]
         p2_card_set = [*public_cards, *p2_hole_cards]
         p1_classification, p1_hand_ranking, p1_best_set = self.hand_classifier(p1_card_set)
@@ -148,6 +148,8 @@ class PokerOracle:
         p2_highest_card = self.get_highest_card(p2_best_set)
         if p1_highest_card.get_rank() > p2_highest_card.get_rank():
             return p1_win
+        elif p1_highest_card.get_rank() == p2_highest_card.get_rank():
+            return tie
         return p2_win
     
     # TODO: Sometimes returns a 0 probability for win. Is this realistic?
@@ -194,31 +196,7 @@ class PokerOracle:
         return hole_pair_win_probability
     
     def poker_cheat_sheet_generator(self, max_num_opponents: int, num_rollouts: int) -> list[list[float]]:
-        card_deck = CardDeck()
-        hole_pair_types: dict[list[Card]] = {}
-        deck: list[Card] = card_deck.cards
-        for card1 in deck:
-            for card2 in deck:
-                pair_type_key = ""
-                # TODO: Maybe create own method for converting a pair of cards to a type?
-                if card1 == card2:
-                    continue
-                if card1.get_rank() == card2.get_rank():
-                    pair_type_key = str(card1.get_rank()) + "_pair"
-                else:
-                    # NOTE: Sort the ranks to make sure that e.g. both rank pairs (10,9) and (9,10)
-                    # results in key 10_9_suited
-                    sorted_ranks = sorted([card1.get_rank(), card2.get_rank()])
-                    if card1.get_suit() == card2.get_suit():
-                        pair_type_key = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_suited"
-                    else: 
-                        pair_type_key = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_unsuited"
-                hole_pair = [card1, card2]
-                if pair_type_key in list(hole_pair_types.keys()):
-                    hole_pair_types[pair_type_key].append(hole_pair)
-                else:
-                    hole_pair_types[pair_type_key] = [hole_pair]
-        
+        hole_pair_types = self.get_all_hole_pairs_by_type()
         cheat_sheet: dict[list[float]] = {}
         pair_types = list(hole_pair_types.keys())
         print("Number of pair types:", len(pair_types))
@@ -228,9 +206,7 @@ class PokerOracle:
             for i in range(max_num_opponents):
                 num_opponents = i + 1
                 winning_probability = self.rollout_hole_pair_evaluator(random_hole_pair, None, num_opponents, num_rollouts)
-                cheat_sheet[pair_type].append(winning_probability)
-        
-        # TODO: Shoul also return a mapping from keys to index in cheat_sheet
+                cheat_sheet[pair_type].append(winning_probability)       
         return cheat_sheet
     
     def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int, 
@@ -257,8 +233,26 @@ class PokerOracle:
                 pair_type = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_unsuited"
         return pair_type
         
-    def utility_matrix_generator(self):
-        pass
+    def utility_matrix_generator(self, public_cards: list[Card]) -> list[list[int]]:
+        all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
+        
+    
+    def get_all_hole_pairs_by_type(self) -> dict[list[Card]]:
+        card_deck = CardDeck()
+        hole_pairs_by_type: dict[list[Card]] = {}
+        deck: list[Card] = card_deck.cards
+        for card1 in deck:
+            for card2 in deck:
+                if card1 == card2:
+                    continue
+                hole_pair = [card1, card2]
+                pair_type_key = self.get_hole_pair_type(hole_pair)
+                if pair_type_key in list(hole_pairs_by_type.keys()):
+                    hole_pairs_by_type[pair_type_key].append(hole_pair)
+                else:
+                    hole_pairs_by_type[pair_type_key] = [hole_pair]
+        return hole_pairs_by_type
+    
 
 if __name__ == "__main__":
 
