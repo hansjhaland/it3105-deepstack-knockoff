@@ -260,7 +260,7 @@ class PokerOracle:
             pair_type = f"{sorted_ranks[1]}{card1_suit}_{sorted_ranks[0]}{card2_suit}"
         return pair_type
         
-    
+    # TODO: Maybe change to pandas dataframe?
     def utility_matrix_generator(self, public_cards: list[Card]) -> dict[dict[int]]:
         utility_matrix: dict[dict[int]] = {}
         all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
