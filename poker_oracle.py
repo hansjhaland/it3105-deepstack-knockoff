@@ -219,6 +219,8 @@ class PokerOracle:
                 cheat_sheet[pair_type].append(winning_probability)       
         return cheat_sheet
     
+    
+    # TODO: Create method for saving cheat sheet to file
     def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int, 
                                                cheat_sheet: dict[list[float]]) -> float:
         hole_pair_type = self.get_hole_pair_type(hole_pair)
@@ -322,6 +324,9 @@ class PokerOracle:
                 else:
                     hole_pairs_by_type[pair_type_key] = [hole_pair]
         return hole_pairs_by_type
+    
+    def get_deck_of_cards(self) -> CardDeck:
+        return CardDeck()
     
 
 if __name__ == "__main__":
