@@ -174,8 +174,7 @@ class PokerGameManager:
             elif i == big_blind_index:
                 if self.current_hand_players[i].num_chips < self.big_blind_chips:
                     played_action = self.handle_fold(self.current_hand_players[i])
-                    # TODO: Seems like both players runs out of chips on the same round, this should not be possible in a ZERO SUM GAME. Need to investigate the large pot sizes.
-                    self.pot += self.current_hand_players[i].bet(self.big_blind_chips) # TODO: index goes out of range, suspect this is because small blind player folds before big blind players turn
+                    self.pot += self.current_hand_players[i].bet(self.big_blind_chips) 
                     # If not enough chips for big blind, player is out
                     print(f"Player {self.current_hand_players[i]} cannot afford big blind and is out of game!")
                     self.current_game_players.remove(self.current_hand_players[i])
@@ -334,6 +333,9 @@ class RolloutPokerAgent(PokerAgent):
     # Implementing get action for a pure rollout based agent
     def get_action(self, public_cards: list[Card], num_opponents: int, rollout_count: int, poker_oracle: PokerOracle) -> str:
         # TODO: Should get probabilities from a pre-generated (and preferably saved) cheat sheet
+        # TODO: Probability thresholds should be initialization paramaters
+        # TODO: The probabilities could vary depending on stage of the game
+        # TODO: Should have a probaibility of bluffin, i.e. a probability of raining with a bad hand (when you actually want to fold)
         win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
         if win_probability >= 0.3:
             return "raise"
