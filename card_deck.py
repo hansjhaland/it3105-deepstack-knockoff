@@ -22,12 +22,13 @@ class Card:
     
 class CardDeck:
         # TODO: May be necessary to implement a "limited card deck" for less computation.
-        # Could create a specializaition of this class.
+        # Could add a boolean in constructor to determine if the deck is limited or not.
+        # If limited, then take only ranks 9 to 14 of all suits.
     
         def __init__(self):
             self.suits = ['S', 'H', 'D', 'C']
             self.ranks = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-            self.cards = []
+            self.cards: list[Card] = []
             for suit in self.suits:
                 for rank in self.ranks:
                     self.cards.append(Card(suit, rank))
