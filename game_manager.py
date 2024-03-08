@@ -10,9 +10,7 @@ class PokerGameManager:
         self.poker_oracle = PokerOracle()
         self.public_cards: list[Card] = []
         self.num_chips_bet = 2
-        self.small_blind_player = None
         self.small_blind_chips: int = self.num_chips_bet / 2
-        self.big_blind_player = None
         self.big_blind_chips: int = self.num_chips_bet
         self.current_bet = self.big_blind_chips
         self.small_blind_player_index = 0 # Needs to "rotate" with modulo operation
@@ -50,6 +48,7 @@ class PokerGameManager:
         
     
     def run_one_hand(self):
+        # TODO: NEEDS TO HANDLE UP TO 6 PLAYERS
         # Assumes two or more players
         # Run one hand to showdown
         self.current_hand_players = self.current_game_players[:]
