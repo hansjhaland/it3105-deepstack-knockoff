@@ -5,7 +5,7 @@ from card_deck import Card, CardDeck
 class PokerGameManager:
     
     def __init__(self, use_limited_deck=False):
-        self.use_limited_deck = use_limited_deck
+        self.use_limited_deck = use_limited_deck 
         self.poker_agents: list[RolloutPokerAgent | ResolverPokerAgent | HumanPlayer | CombinationPokerAgent] = []
         self.pot = 0
         self.poker_oracle = PokerOracle(use_limited_deck)
@@ -159,7 +159,7 @@ class PokerGameManager:
             played_action = ""
             if i == small_blind_index:
                 if self.current_hand_players[i].num_chips < self.small_blind_chips:
-                    played_action = self.handle_fold(self.current_hand_players[i])
+                    played_action, self.current_hand_players = self.handle_fold(self.current_hand_players[i], self.current_hand_players)
                     self.pot += self.current_hand_players[i].bet(self.small_blind_chips)
                     # If not enough chips for small blind, player is out
                     print(f"Player {self.current_hand_players[i]} cannot afford small blind and is out of game!")
@@ -173,7 +173,7 @@ class PokerGameManager:
                         self.current_bet = self.big_blind_chips
             elif i == big_blind_index:
                 if self.current_hand_players[i].num_chips < self.big_blind_chips:
-                    played_action = self.handle_fold(self.current_hand_players[i])
+                    played_action, self.current_hand_players = self.handle_fold(self.current_hand_players[i], self.current_hand_players)
                     self.pot += self.current_hand_players[i].bet(self.big_blind_chips) 
                     # If not enough chips for big blind, player is out
                     print(f"Player {self.current_hand_players[i]} cannot afford big blind and is out of game!")
@@ -197,7 +197,7 @@ class PokerGameManager:
     def handle_desired_action(self, player, desired_action: str, legal_num_raises: int):
         played_action = desired_action
         if desired_action == "fold":
-            played_action = self.handle_fold(player)
+            played_action, self.current_hand_players = self.handle_fold(player, self.current_hand_players)
         if desired_action == "call":
             bet_amount, played_action = self.handle_call(player)
             self.pot += bet_amount
@@ -246,16 +246,17 @@ class PokerGameManager:
         elif self.current_stage == "river":
             self.current_stage = "river"
 
-    def handle_fold(self, player):
-        self.current_hand_players.remove(player)
-        return  "fold"
+    @staticmethod
+    def handle_fold(player, current_hand_players):
+        current_hand_players.remove(player)
+        return  "fold", current_hand_players
     
     def handle_call(self, player):
         call_amount = self.current_bet - player.current_bet
         bet_amount = 0
         action = "call"
         if call_amount > player.num_chips:
-            action = self.handle_fold(player)
+            action, self.current_game_players = self.handle_fold(player, self.current_hand_players)
         else:
             player.bet(call_amount)
             bet_amount = call_amount
