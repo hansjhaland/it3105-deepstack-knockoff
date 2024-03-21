@@ -5,7 +5,7 @@ import random
 
 class PokerOracle:
     
-    def __init__(self):
+    def __init__(self, use_limited_deck=False):
         self.hand_rankings = {"royal_flush": 1,
                               "straight_flush": 2,
                               "four_of_a_kind": 3,
@@ -16,6 +16,8 @@ class PokerOracle:
                               "two_pair": 8,
                               "pair": 9,
                               "high_card": 10}
+        
+        self.use_limited_deck = use_limited_deck
     
     # NOTE: Easiest to evaluate set of 5 cards.
     # Sets of 6 or 7 cards will be split into all possible sets 
@@ -138,7 +140,7 @@ class PokerOracle:
         num_public_cards = len(public_cards)
         # NOTE: Draw remaining public cards and evaluate
         if not num_public_cards == 5:
-            deck = CardDeck()
+            deck = CardDeck(limited=self.use_limited_deck)
             deck.shuffle()
             cards_to_exclude = [*public_cards, *p1_hole_cards, *p2_hole_cards]
             deck.exclude(cards_to_exclude)
@@ -174,7 +176,7 @@ class PokerOracle:
             [exclude_from_deck.append(card) for card in public_cards]
         for _ in range(rollout_count):
             # Generate card deck with known private and public card excluded
-            card_deck = CardDeck()
+            card_deck = CardDeck(limited=self.use_limited_deck)
             card_deck.exclude(exclude_from_deck)
             card_deck.shuffle()
             
@@ -310,7 +312,7 @@ class PokerOracle:
         return False         
     
     def get_all_hole_pairs_by_type(self) -> dict[list[Card]]:
-        card_deck = CardDeck()
+        card_deck = CardDeck(limited=self.use_limited_deck)
         hole_pairs_by_type: dict[list[Card]] = {}
         deck: list[Card] = card_deck.cards
         for card1 in deck:
@@ -326,13 +328,15 @@ class PokerOracle:
         return hole_pairs_by_type
     
     def get_deck_of_cards(self) -> CardDeck:
-        return CardDeck()
+        return CardDeck(limited=self.use_limited_deck)
     
 
 if __name__ == "__main__":
 
-    poker_oracle = PokerOracle()
-    card_deck = CardDeck()
+    use_limited_deck = False
+
+    poker_oracle = PokerOracle(use_limited_deck)
+    card_deck = CardDeck(use_limited_deck)
     card_deck.shuffle()
     card_set = card_deck.deal(7)
     subsets = poker_oracle.get_all_five_card_subsets(card_set)

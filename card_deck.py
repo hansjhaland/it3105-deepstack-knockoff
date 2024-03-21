@@ -25,9 +25,9 @@ class CardDeck:
         # Could add a boolean in constructor to determine if the deck is limited or not.
         # If limited, then take only ranks 9 to 14 of all suits.
     
-        def __init__(self):
+        def __init__(self, limited = False):
             self.suits = ['S', 'H', 'D', 'C']
-            self.ranks = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+            self.ranks = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] if not limited else [9, 10, 11, 12, 13, 14]
             self.cards: list[Card] = []
             for suit in self.suits:
                 for rank in self.ranks:
@@ -53,6 +53,7 @@ class CardDeck:
         
         def get_ranks(self):
             return self.ranks
+        
         
         
         

@@ -4,10 +4,11 @@ from card_deck import Card, CardDeck
 
 class PokerGameManager:
     
-    def __init__(self):
+    def __init__(self, use_limited_deck=False):
+        self.use_limited_deck = use_limited_deck
         self.poker_agents: list[RolloutPokerAgent | ResolverPokerAgent | HumanPlayer | CombinationPokerAgent] = []
         self.pot = 0
-        self.poker_oracle = PokerOracle()
+        self.poker_oracle = PokerOracle(use_limited_deck)
         self.public_cards: list[Card] = []
         self.num_chips_bet = 2
         self.small_blind_chips: int = self.num_chips_bet / 2
@@ -28,7 +29,7 @@ class PokerGameManager:
         elif agent_type == "resolver":
             poker_agent = ResolverPokerAgent(agent_type, chips, name) # TODO: NOT WORKING!
         elif agent_type == "combination":
-            poker_agent = CombinationPokerAgent(agent_type, chips, name)
+            poker_agent = CombinationPokerAgent(agent_type, chips, name) # TODO: NOT WORKING!
         elif agent_type == "human":
             poker_agent = HumanPlayer(agent_type, chips, name)
         self.poker_agents.append(poker_agent)
@@ -69,7 +70,7 @@ class PokerGameManager:
             small_blind_index = (small_blind_index + 1) % len(self.current_hand_players)
             big_blind_index = (small_blind_index + 1) % len(self.current_hand_players)
             
-            # This assumes that one can only have showdown in river stage
+            # This assumes that one can only have showdown after river stage
             winner=None
             winning_player = 0
             if not self.current_stage == 'river':
@@ -378,7 +379,12 @@ class HumanPlayer(PokerAgent):
     
     
 if __name__ == "__main__":
-    game_manager = PokerGameManager()
+    
+    use_limited_deck = True
+    
+    game_manager = PokerGameManager(use_limited_deck=use_limited_deck)
+    print(game_manager.poker_oracle.get_deck_of_cards())
+    print(f"Number of cards: {len(game_manager.poker_oracle.get_deck_of_cards().cards)}")
     game_manager.add_poker_agent("rollout", 100, "Bob")
     game_manager.add_poker_agent("rollout", 100, "Alice")
     
