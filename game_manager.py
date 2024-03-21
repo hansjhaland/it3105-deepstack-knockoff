@@ -159,7 +159,7 @@ class PokerGameManager:
             played_action = ""
             if i == small_blind_index:
                 if self.current_hand_players[i].num_chips < self.small_blind_chips:
-                    played_action, self.current_hand_players = self.handle_fold(self.current_hand_players[i], self.current_hand_players)
+                    played_action, self.current_hand_players = PokerGameManager.handle_fold(self.current_hand_players[i], self.current_hand_players)
                     self.pot += self.current_hand_players[i].bet(self.small_blind_chips)
                     # If not enough chips for small blind, player is out
                     print(f"Player {self.current_hand_players[i]} cannot afford small blind and is out of game!")
@@ -173,7 +173,7 @@ class PokerGameManager:
                         self.current_bet = self.big_blind_chips
             elif i == big_blind_index:
                 if self.current_hand_players[i].num_chips < self.big_blind_chips:
-                    played_action, self.current_hand_players = self.handle_fold(self.current_hand_players[i], self.current_hand_players)
+                    played_action, self.current_hand_players = PokerGameManager.handle_fold(self.current_hand_players[i], self.current_hand_players)
                     self.pot += self.current_hand_players[i].bet(self.big_blind_chips) 
                     # If not enough chips for big blind, player is out
                     print(f"Player {self.current_hand_players[i]} cannot afford big blind and is out of game!")
@@ -197,16 +197,16 @@ class PokerGameManager:
     def handle_desired_action(self, player, desired_action: str, legal_num_raises: int):
         played_action = desired_action
         if desired_action == "fold":
-            played_action, self.current_hand_players = self.handle_fold(player, self.current_hand_players)
+            played_action, self.current_hand_players = PokerGameManager.handle_fold(player, self.current_hand_players)
         if desired_action == "call":
-            bet_amount, played_action = self.handle_call(player)
+            bet_amount, played_action, self.current_hand_players = PokerGameManager.handle_call(player, self.current_bet ,self.current_hand_players)
             self.pot += bet_amount
         if desired_action == "raise":
             if legal_num_raises > 0:               
-                bet_amount, played_action, legal_num_raises = self.handle_raise(player, legal_num_raises)
+                bet_amount, played_action, legal_num_raises, self.current_hand_players = PokerGameManager.handle_raise(player, legal_num_raises, self.current_bet, self.big_blind_chips, self.current_hand_players)
                 self.current_bet = player.current_bet
             else:
-                bet_amount, played_action = self.handle_call(player)
+                bet_amount, played_action, self.current_hand_players = PokerGameManager.handle_call(player, self.current_bet, self.current_hand_players)
             self.pot += bet_amount
         return played_action, legal_num_raises
         
@@ -251,28 +251,30 @@ class PokerGameManager:
         current_hand_players.remove(player)
         return  "fold", current_hand_players
     
-    def handle_call(self, player):
-        call_amount = self.current_bet - player.current_bet
+    @staticmethod
+    def handle_call(player, current_bet, current_hand_players):
+        call_amount = current_bet - player.current_bet
         bet_amount = 0
         action = "call"
         if call_amount > player.num_chips:
-            action, self.current_game_players = self.handle_fold(player, self.current_hand_players)
+            action, current_hand_players = PokerGameManager.handle_fold(player, current_hand_players)
         else:
             player.bet(call_amount)
             bet_amount = call_amount
-        return bet_amount, action
+        return bet_amount, action, current_hand_players
     
-    def handle_raise(self, player, num_remaining_raises: int):
-        raise_amount = self.big_blind_chips + (self.current_bet - player.current_bet) # NOTE: Assuming a raise means that you first go "even" with the current bet
+    @staticmethod
+    def handle_raise(player, num_remaining_raises: int, current_bet, big_blind_chips, current_hand_players):
+        raise_amount = big_blind_chips + (current_bet - player.current_bet) # NOTE: Assuming a raise means that you first go "even" with the current bet
         bet_amount = 0
         action = "raise"
         if raise_amount > player.num_chips or num_remaining_raises == 0:
-           bet_amount, action = self.handle_call(player)
+           bet_amount, action, current_hand_players = PokerGameManager.handle_call(player, current_bet, current_hand_players)
         else:
             num_remaining_raises -= 1
             player.bet(raise_amount)
             bet_amount = raise_amount
-        return  bet_amount, action, num_remaining_raises
+        return  bet_amount, action, num_remaining_raises, current_hand_players
     
     def prepare_new_game(self, keep_players: bool):
         if not keep_players:
