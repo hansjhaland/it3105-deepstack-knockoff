@@ -132,9 +132,7 @@ class PokerOracle:
         num_each_rank = self.count_ranks(card_set)
         return 3 in num_each_rank
     
-    # TODO: THIS SHOULD BEHAVE DIFFERENTLY WHEN USED BY ROLLOUT_HOLE_PAIR_EVALUATOR and UTILITY MATRIX GENERATOR
-    # Rollout need to draw the remaining public cards for each run to see who wind.
-    # Utility matrix should ONLY use the known cards, and no drawing of cards should be involved. 
+    
     def evaluate_showdown(self, public_cards: list[Card], p1_hole_cards: list[Card], p2_hole_cards: list[Card]) -> int:
         # NOTE: For hand rankings, lower rank is better
         p1_win = 1
@@ -258,7 +256,6 @@ class PokerOracle:
         return pair_type
         
     # TODO: Maybe change to pandas dataframe? 
-    # TODO: SHOULD NOT USE EVALUATION WHERE ADDITIONAL PUBLIC CARDS ARE DRAWN!
     def utility_matrix_generator(self, public_cards: list[Card]) -> dict[dict[int]]:
         utility_matrix: dict[dict[int]] = {}
         all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
@@ -286,7 +283,6 @@ class PokerOracle:
                     utility_matrix[key_hole_pair_1].append({key_hole_pair_2: 0})
                 else:
                     # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
-                    # TODO: THIS EVALUATION SHOULD NOT DEPEND ON DRAWING ADDITIONAL PUBLIC CARDS WHEN USED IN UTILITY MATRIX GENERATION
                     winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
                     utility_matrix[key_hole_pair_1].append({key_hole_pair_2: winner})
         return utility_matrix, hole_pair_keys
