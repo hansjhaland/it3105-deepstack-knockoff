@@ -140,16 +140,6 @@ class PokerOracle:
         p1_win = 1
         p2_win = -1
         tie = 0
-        num_public_cards = len(public_cards)
-        # NOTE: Draw remaining public cards and evaluate
-        if not num_public_cards == 5:
-            deck = CardDeck(limited=self.use_limited_deck)
-            deck.shuffle()
-            cards_to_exclude = [*public_cards, *p1_hole_cards, *p2_hole_cards]
-            deck.exclude(cards_to_exclude)
-            num_cards_to_deal = 5 - num_public_cards
-            new_public_cards = deck.deal(num_cards_to_deal)
-            public_cards = [*public_cards, *new_public_cards]
         p1_card_set = [*public_cards, *p1_hole_cards]
         p2_card_set = [*public_cards, *p2_hole_cards]
         p1_classification, p1_hand_ranking, p1_best_set = self.hand_classifier(p1_card_set)
