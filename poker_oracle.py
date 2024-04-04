@@ -257,10 +257,8 @@ class PokerOracle:
             pair_type = f"{sorted_ranks[1]}{card1_suit}_{sorted_ranks[0]}{card2_suit}"
         return pair_type
         
-    # TODO: Maybe change to pandas dataframe? 
     def utility_matrix_generator(self, public_cards: list[Card]) -> dict[dict[int]]:
-        utility_matrix: dict[dict[int]] = {}
-        list_utility_matrix: list[list[int]] = []
+        utility_matrix: list[list[int]] = []
         all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
         hole_pair_types = list(all_hole_pairs_by_type.keys()) 
         all_hole_pairs = []
@@ -276,26 +274,20 @@ class PokerOracle:
                     all_hole_pairs.append(hole_pair)
                     hole_pair_keys.append(hole_pair_key)
         for index_1, hole_pair_1 in enumerate(all_hole_pairs):
-            key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
-            utility_matrix[key_hole_pair_1] = []
-            list_utility_matrix.append([])
+            utility_matrix.append([])
             for _, hole_pair_2 in enumerate(all_hole_pairs):
-                key_hole_pair_2 = self.get_hole_pair_key(hole_pair_2)
                 if hole_pair_1 == hole_pair_2:
-                    utility_matrix[key_hole_pair_1].append({key_hole_pair_2: 0})
-                    list_utility_matrix[index_1].append(0)
+                    utility_matrix[index_1].append(0)
                 elif self.is_card_overlap(hole_pair_1, hole_pair_2, public_cards):
-                    utility_matrix[key_hole_pair_1].append({key_hole_pair_2: 0})
-                    list_utility_matrix[index_1].append(0)
+                    utility_matrix[index_1].append(0)
                 else:
                     # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
                     winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
-                    utility_matrix[key_hole_pair_1].append({key_hole_pair_2: winner})
-                    list_utility_matrix[index_1].append(winner)
+                    utility_matrix[index_1].append(winner)
                     
         self.hole_pair_keys = hole_pair_keys
         
-        return utility_matrix, hole_pair_keys, np.asarray(list_utility_matrix)
+        return np.asarray(utility_matrix), hole_pair_keys
 
     def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
         # NOTE: Allows for getting the entry in the utility matrix directly from the hole cards
@@ -321,7 +313,6 @@ class PokerOracle:
         return False         
     
     def get_all_hole_pairs_by_type(self) -> dict[list[Card]]:
-        # TODO: THIS SHOUL SET A INSTANCE VARIABLE
         card_deck = CardDeck(limited=self.use_limited_deck)
         hole_pairs_by_type: dict[list[Card]] = {}
         deck: list[Card] = card_deck.cards
@@ -355,7 +346,8 @@ if __name__ == "__main__":
     #     for card in subset:
     #         print(card)
     
-    utility_matrix, hole_pair_keys, list_utility_matrix = poker_oracle.utility_matrix_generator(card_deck.deal(3))
+    utility_matrix, hole_pair_keys = poker_oracle.utility_matrix_generator(card_deck.deal(3))
+    # utility_matrix, hole_pair_keys, utility_matrix = poker_oracle.utility_matrix_generator(card_deck.deal(3))
     
     hole_pair_1 = card_deck.deal(2)
     hole_pair_2 = card_deck.deal(2)
@@ -364,9 +356,10 @@ if __name__ == "__main__":
     hole_pair_key_1 = poker_oracle.get_hole_pair_key(hole_pair_1)
     hole_pair_key_2 = poker_oracle.get_hole_pair_key(hole_pair_2)
     
-    print(len(utility_matrix), len(hole_pair_keys))
-    print(list_utility_matrix.shape)
-    # [print(row) for row in list_utility_matrix]
-    print(utility_matrix[hole_pair_key_1][index_hole_pair_2], list_utility_matrix[index_hole_pair_1][index_hole_pair_2])
+    # print(len(utility_matrix), len(hole_pair_keys))
+    print(utility_matrix.shape)
+    # [print(row) for row in utility_matrix]
+    # print(utility_matrix[hole_pair_key_1][index_hole_pair_2], utility_matrix[index_hole_pair_1][index_hole_pair_2])
+    print(utility_matrix[index_hole_pair_1][index_hole_pair_2])
     
     
