@@ -1,6 +1,7 @@
 from card_deck import Card, CardDeck
 from itertools import combinations
 import random
+import numpy as np
 
 
 class PokerOracle:
@@ -18,6 +19,7 @@ class PokerOracle:
                               "high_card": 10}
         
         self.use_limited_deck = use_limited_deck
+        self.hole_pair_keys = None
     
     # NOTE: Easiest to evaluate set of 5 cards.
     # Sets of 6 or 7 cards will be split into all possible sets 
@@ -258,6 +260,7 @@ class PokerOracle:
     # TODO: Maybe change to pandas dataframe? 
     def utility_matrix_generator(self, public_cards: list[Card]) -> dict[dict[int]]:
         utility_matrix: dict[dict[int]] = {}
+        list_utility_matrix: list[list[int]] = []
         all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
         hole_pair_types = list(all_hole_pairs_by_type.keys()) 
         all_hole_pairs = []
@@ -272,20 +275,35 @@ class PokerOracle:
                 if not hole_pair_key in hole_pair_keys:
                     all_hole_pairs.append(hole_pair)
                     hole_pair_keys.append(hole_pair_key)
-        for hole_pair_1 in all_hole_pairs:
+        for index_1, hole_pair_1 in enumerate(all_hole_pairs):
             key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
             utility_matrix[key_hole_pair_1] = []
-            for hole_pair_2 in all_hole_pairs:
+            list_utility_matrix.append([])
+            for _, hole_pair_2 in enumerate(all_hole_pairs):
                 key_hole_pair_2 = self.get_hole_pair_key(hole_pair_2)
                 if hole_pair_1 == hole_pair_2:
                     utility_matrix[key_hole_pair_1].append({key_hole_pair_2: 0})
+                    list_utility_matrix[index_1].append(0)
                 elif self.is_card_overlap(hole_pair_1, hole_pair_2, public_cards):
                     utility_matrix[key_hole_pair_1].append({key_hole_pair_2: 0})
+                    list_utility_matrix[index_1].append(0)
                 else:
                     # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
                     winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
                     utility_matrix[key_hole_pair_1].append({key_hole_pair_2: winner})
-        return utility_matrix, hole_pair_keys
+                    list_utility_matrix[index_1].append(winner)
+                    
+        self.hole_pair_keys = hole_pair_keys
+        
+        return utility_matrix, hole_pair_keys, np.asarray(list_utility_matrix)
+
+    def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
+        # NOTE: Allows for getting the entry in the utility matrix directly from the hole cards
+        key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
+        key_hole_pair_2 = self.get_hole_pair_key(hole_pair_2)
+        index_hole_pair_1 = self.hole_pair_keys.index(key_hole_pair_1)
+        index_hole_pair_2 = self.hole_pair_keys.index(key_hole_pair_2)
+        return index_hole_pair_1, index_hole_pair_2
 
     def is_card_overlap(self, hole_pair_1: list[Card], hole_pair_2: list[Card], public_cards: list[Card]) -> bool:
         for card1 in hole_pair_1:
@@ -303,6 +321,7 @@ class PokerOracle:
         return False         
     
     def get_all_hole_pairs_by_type(self) -> dict[list[Card]]:
+        # TODO: THIS SHOUL SET A INSTANCE VARIABLE
         card_deck = CardDeck(limited=self.use_limited_deck)
         hole_pairs_by_type: dict[list[Card]] = {}
         deck: list[Card] = card_deck.cards
@@ -329,9 +348,25 @@ if __name__ == "__main__":
     poker_oracle = PokerOracle(use_limited_deck)
     card_deck = CardDeck(use_limited_deck)
     card_deck.shuffle()
-    card_set = card_deck.deal(7)
-    subsets = poker_oracle.get_all_five_card_subsets(card_set)
-    for subset in subsets:
-        print(type(subset))
-        for card in subset:
-            print(card)
+    # card_set = card_deck.deal(7)
+    # subsets = poker_oracle.get_all_five_card_subsets(card_set)
+    # for subset in subsets:
+    #     print(type(subset))
+    #     for card in subset:
+    #         print(card)
+    
+    utility_matrix, hole_pair_keys, list_utility_matrix = poker_oracle.utility_matrix_generator(card_deck.deal(3))
+    
+    hole_pair_1 = card_deck.deal(2)
+    hole_pair_2 = card_deck.deal(2)
+    
+    index_hole_pair_1, index_hole_pair_2 = poker_oracle.get_utility_matrix_indices_by_hole_cards(hole_pair_1, hole_pair_2)
+    hole_pair_key_1 = poker_oracle.get_hole_pair_key(hole_pair_1)
+    hole_pair_key_2 = poker_oracle.get_hole_pair_key(hole_pair_2)
+    
+    print(len(utility_matrix), len(hole_pair_keys))
+    print(list_utility_matrix.shape)
+    # [print(row) for row in list_utility_matrix]
+    print(utility_matrix[hole_pair_key_1][index_hole_pair_2], list_utility_matrix[index_hole_pair_1][index_hole_pair_2])
+    
+    
