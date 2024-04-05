@@ -130,12 +130,12 @@ class PokerGameManager:
                 if self.can_go_to_next_hand(self.current_hand_players):
                     return 
 
-                if self.can_go_to_next_stage(self.current_round_actions):
+                if PokerGameManager.can_go_to_next_stage(self.current_round_actions):
                     return
             
             players_in_order = [*self.current_hand_players[small_blind_index:], *self.current_hand_players[:small_blind_index]]
             
-            while not (self.can_go_to_next_stage(self.current_round_actions) or self.can_go_to_next_hand(self.current_hand_players)):
+            while not (PokerGameManager.can_go_to_next_stage(self.current_round_actions) or self.can_go_to_next_hand(self.current_hand_players)):
                 # Update player order if someone folded
                 while "fold" in self.current_round_actions:
                     fold_player_index = self.current_round_actions.index("fold")
@@ -213,7 +213,8 @@ class PokerGameManager:
     def can_go_to_next_hand(self, players_remaining_in_hand) -> bool:
         return len(players_remaining_in_hand) == 1
     
-    def can_go_to_next_stage(self, round_actions: list[str]) -> bool:
+    @staticmethod
+    def can_go_to_next_stage(round_actions: list[str]) -> bool:
         action_counts = {"fold": 0, "call": 0, "raise": 0}
         if len(round_actions) == 0:
             return False
@@ -296,7 +297,10 @@ class PokerGameManager:
     def texas_holdem_simulator(self, num_players: int, num_games: int):
         pass
     
-
+    # TODO: Add method for taking a "snapshot" of the game state and initialize a state object to be used in the resolver.
+    # This will be called each time a player capable of using the resolver is to make a decision. Maybe this should be a Agent method and not Game Manager method.
+    
+    
 class PokerAgent:
     def __init__(self, type: str, initial_chips: int, name: str):
         self.name = name
