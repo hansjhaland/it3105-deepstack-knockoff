@@ -289,6 +289,7 @@ class PokerOracle:
         
         return np.asarray(utility_matrix), hole_pair_keys
 
+    # TODO: Need to change this, since Resolver does not operate with hole cards but with ranges
     def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
         # NOTE: Allows for getting the entry in the utility matrix directly from the hole cards
         key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
