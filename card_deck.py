@@ -21,9 +21,6 @@ class Card:
     
     
 class CardDeck:
-        # TODO: May be necessary to implement a "limited card deck" for less computation.
-        # Could add a boolean in constructor to determine if the deck is limited or not.
-        # If limited, then take only ranks 9 to 14 of all suits.
     
         def __init__(self, limited = False):
             self.suits = ['S', 'H', 'D', 'C']
