@@ -100,11 +100,19 @@ class Resolver:
         
         other_player_ranges = other_player_ranges * uniform_probability
         
-        return acting_player_ranges, other_player_ranges
+        return np.asarray(acting_player_ranges), np.asarray(other_player_ranges)
     
     
     def get_initial_strategy(self):
-        pass
+        hole_pair_keys: list[str] = self.poker_oracle.get_all_hole_pair_keys()
+        actions = list(self.action_to_index.keys())
+        num_actions = len(actions)
+        strategy_matrix = []
+        for _ in range(len(hole_pair_keys)):
+            action_distribution = np.ones(num_actions) * 1/num_actions
+            strategy_matrix.append(action_distribution)
+            
+        return np.asarray(strategy_matrix)
     
 
     def subtree_traversal_rollout(self, state, acting_player_range, other_player_range, end_stage, end_depth):
@@ -185,7 +193,6 @@ class Resolver:
 
 
     def resolve(self, state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts):
-        # TODO: How to generate ranges for each player?
         # TODO: How to determine end before resolving?
         # TODO: Need to fix the state manager to be able to generate proper subtrees
         
@@ -226,14 +233,17 @@ if __name__ == "__main__":
     card_deck = CardDeck(use_limited_deck)
     card_deck.shuffle()
     
-    public_cards = card_deck.deal(3)
+    public_cards = card_deck.deal(5)
     
     acting_player_hole_cards = card_deck.deal(2)
     
     acting_player_ranges, other_player_ranges = resolver.get_initial_ranges(public_cards,
                                                                             acting_player_hole_cards)
+    # print(acting_player_ranges)
+    # print()
+    # print(other_player_ranges)
     
-    print(acting_player_ranges)
-    print()
-    print(other_player_ranges)
+    strategy_matrix = resolver.get_initial_strategy()
+    
+    print(strategy_matrix)
     
