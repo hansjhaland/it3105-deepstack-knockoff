@@ -1,5 +1,8 @@
 import numpy as np
 from state_manager import PokerStateManager
+from poker_oracle import PokerOracle
+from game_manager import PokerGameManager
+from card_deck import Card, CardDeck
 
 class Resolver:
     # Resolving:
@@ -7,11 +10,20 @@ class Resolver:
     # - Rollout. Does not need to fully explore the subtree. May want to stop when the stage changes.
     # - For chance nodes: Each visit can invoke different events (public cards)
     # - Each player node (or state) houses a strategy matrix, with one row for each possible hole pair and one column for each possible action. 
-    # - Range vectors are sent down to each node, and evaluation vectors are returned upward. #TODO: NEED TO ADD PARENT POINTERS TO STATES
+    # - Range vectors are sent down to each node, and evaluation vectors are returned upward. 
+    # #TODO: NEED TO ADD PARENT POINTERS TO STATES
     # - Range of active player is modified as it passes down.
 
-    def generate_initial_subtree(self, state, acting_player_range, other_player_range, end_stage, end_depth):
-        pass
+    def __init__(self, state_manager: PokerStateManager, poker_oracle: PokerOracle):
+        self.state_manager = state_manager
+        self.poker_oracle = poker_oracle
+        
+        self.action_to_index = {"fold": 0, "call": 1, "raise": 2}
+
+
+    def generate_initial_subtree(self, state, end_stage, end_depth):
+        root = self.state_manager.generate_subtree_to_given_stage_and_depth(state, end_stage, end_depth)
+        return root
 
 
     def is_showdown_state(self,state):
@@ -37,6 +49,63 @@ class Resolver:
         # NOTE: Should probably use poker oracle
         pass
 
+    
+    def get_initial_ranges(self, public_cards: list[Card], acting_player_cards: list[Card]):    
+        # NOTE: Correct number of hole pair keys is 1326 for full deck
+        # and 276 for limited deck. 
+        hole_pair_keys: list[str] = self.poker_oracle.get_all_hole_pair_keys()
+        
+        acting_player_exclude_cards = []
+        for card in public_cards:
+            card_key = str(card.get_rank()) + card.get_suit()
+            acting_player_exclude_cards.append(card_key)
+    
+        acting_player_ranges = np.zeros(len(hole_pair_keys))
+        
+        for i in range(len(acting_player_ranges)):
+            hole_pair_is_possible = True
+            for card in acting_player_exclude_cards:
+                # Public card is part of the current hole pair, thus hole pair is impossible
+                # Check if card string is substring of hole pair string
+                if card in hole_pair_keys[i]:
+                    hole_pair_is_possible = False
+                    break
+            if hole_pair_is_possible:
+                acting_player_ranges[i] = 1
+            
+        num_possible_hands = np.sum(acting_player_ranges)
+        uniform_probability = 1 / num_possible_hands
+        
+        acting_player_ranges = acting_player_ranges * uniform_probability
+        
+        # Acting players cards has to be exluded from other player ranges      
+        other_player_exclude_cards = acting_player_exclude_cards
+        for card in acting_player_cards:
+            card_key = str(card.get_rank()) + card.get_suit()
+            other_player_exclude_cards.append(card_key)
+        
+        other_player_ranges = np.zeros(len(hole_pair_keys))
+        
+        for i in range(len(other_player_ranges)):
+            hole_pair_is_possible = True
+            for card in other_player_exclude_cards:
+                if card in hole_pair_keys[i]:
+                    hole_pair_is_possible = False
+                    break
+            if hole_pair_is_possible:
+                other_player_ranges[i] = 1
+                
+        num_possible_hands = np.sum(other_player_ranges)
+        uniform_probability = 1 / num_possible_hands
+        
+        other_player_ranges = other_player_ranges * uniform_probability
+        
+        return acting_player_ranges, other_player_ranges
+    
+    
+    def get_initial_strategy(self):
+        pass
+    
 
     def subtree_traversal_rollout(self, state, acting_player_range, other_player_range, end_stage, end_depth):
         # NOTE: Pseudocode assumes that state objects contain its STAGE and DEPTH
@@ -107,10 +176,12 @@ class Resolver:
     def get_action_from_strategy_matrix(self, average_strategy_matrix):
         pass
 
-
+    # NOTE Based on slides page 63
     def bayesian_range_update(self, acting_player_range, action, average_strategy_matrix):
-        # TODO: PSEUDOCODE NOT PROVIDED
-        pass
+        prob_action_given_pair = average_strategy_matrix[:, self.action_to_index[action]]
+        prob_action = np.sum(prob_action_given_pair) / np.sum(average_strategy_matrix)
+        
+        return acting_player_range * (prob_action_given_pair/prob_action)
 
 
     def resolve(self, state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts):
@@ -119,6 +190,8 @@ class Resolver:
         # TODO: Need to fix the state manager to be able to generate proper subtrees
         
         root_node = self.generate_initial_subtree(state, acting_player_range, other_player_range, end_stage, end_depth)
+        initial_strategy = self.get_initial_strategy()
+        root_node.set_strategy_matrix(initial_strategy)
         
         acting_player_evaluations = []
         other_player_evaluations = []
@@ -139,3 +212,28 @@ class Resolver:
         acting_player_range = self.bayesian_range_update(acting_player_range, action, average_strategy_matrix)
         
         return action, acting_player_range # NOTE: Pseudocode additionally return the state resulting from action and the other player's range (even though it's not updated here)
+    
+    
+if __name__ == "__main__":
+    
+    use_limited_deck = True
+    
+    poker_oracle = PokerOracle(use_limited_deck)
+    game_manager = PokerGameManager(use_limited_deck)
+    state_manager = PokerStateManager(game_manager)
+    resolver = Resolver(state_manager, poker_oracle)
+    
+    card_deck = CardDeck(use_limited_deck)
+    card_deck.shuffle()
+    
+    public_cards = card_deck.deal(3)
+    
+    acting_player_hole_cards = card_deck.deal(2)
+    
+    acting_player_ranges, other_player_ranges = resolver.get_initial_ranges(public_cards,
+                                                                            acting_player_hole_cards)
+    
+    print(acting_player_ranges)
+    print()
+    print(other_player_ranges)
+    
