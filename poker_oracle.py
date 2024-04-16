@@ -134,7 +134,6 @@ class PokerOracle:
         num_each_rank = self.count_ranks(card_set)
         return 3 in num_each_rank
     
-    
     def evaluate_showdown(self, public_cards: list[Card], p1_hole_cards: list[Card], p2_hole_cards: list[Card]) -> int:
         # NOTE: For hand rankings, lower rank is better
         p1_win = 1
@@ -245,17 +244,21 @@ class PokerOracle:
         # the suits of the cards in the hole pair. Not just classify as "suited" or "unsuited".
         card1 = hole_pair[0]
         card2 = hole_pair[1]
-        pair_type = ""
-        card1_suit = card1.get_suit()
-        card2_suit = card2.get_suit()
+        pair_key = ""
         if card1.get_rank() == card2.get_rank():
-            pair_type = f"{str(card1.get_rank())}{card1_suit}_{str(card2.get_rank())}{card2_suit}"
+            # NOTE: Sort suits alphabetically to avoid duplicates like (3H_3S) and (3S_3H)
+            sorted_pair = sorted(hole_pair, key=lambda card: card.get_suit())
+            alpha_last_card = sorted_pair[1]
+            alpha_first_card = sorted_pair[0]
+            pair_key = f"{str(card1.get_rank())}{alpha_first_card.get_suit()}_{str(card2.get_rank())}{alpha_last_card.get_suit()}"
         else:
             # NOTE: Sort the ranks to make sure that e.g. both rank pairs (10H,9C) and (9C,10H)
             # results in key 10H_9C
-            sorted_ranks = sorted([card1.get_rank(), card2.get_rank()])
-            pair_type = f"{sorted_ranks[1]}{card1_suit}_{sorted_ranks[0]}{card2_suit}"
-        return pair_type
+            sorted_pair = sorted(hole_pair, key=lambda card: card.get_rank())
+            highest_card = sorted_pair[1]
+            lowest_card = sorted_pair[0]
+            pair_key = f"{str(highest_card.get_rank())}{highest_card.get_suit()}_{str(lowest_card.get_rank())}{lowest_card.get_suit()}"
+        return pair_key
         
     def utility_matrix_generator(self, public_cards: list[Card]) -> dict[dict[int]]:
         utility_matrix: list[list[int]] = []
@@ -273,6 +276,7 @@ class PokerOracle:
                 if not hole_pair_key in hole_pair_keys:
                     all_hole_pairs.append(hole_pair)
                     hole_pair_keys.append(hole_pair_key)
+        count = 0
         for index_1, hole_pair_1 in enumerate(all_hole_pairs):
             utility_matrix.append([])
             for _, hole_pair_2 in enumerate(all_hole_pairs):
@@ -283,11 +287,29 @@ class PokerOracle:
                 else:
                     # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
                     winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
+                    print("Evaluated", count)
+                    count += 1
                     utility_matrix[index_1].append(winner)
                     
         self.hole_pair_keys = hole_pair_keys
         
         return np.asarray(utility_matrix), hole_pair_keys
+    
+    def get_all_hole_pair_keys(self):       
+        card_deck = CardDeck(self.use_limited_deck)
+        
+        hole_pair_keys = []
+        for card1 in card_deck.cards:
+            for card2 in card_deck.cards:
+                if card1 == card2:
+                    continue
+                hole_pair = [card1, card2]
+                hole_pair_key = self.get_hole_pair_key(hole_pair)
+                if hole_pair_key not in hole_pair_keys:
+                    hole_pair_keys.append(hole_pair_key)
+        
+        self.hole_pair_keys = hole_pair_keys
+        return self.hole_pair_keys
 
     # TODO: Need to change this, since Resolver does not operate with hole cards but with ranges
     def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
@@ -313,8 +335,10 @@ class PokerOracle:
                     return True
         return False         
     
-    def get_all_hole_pairs_by_type(self) -> dict[list[Card]]:
+    def get_all_hole_pairs_by_type(self, public_cards: list[Card] = None) -> dict[list[Card]]:
         card_deck = CardDeck(limited=self.use_limited_deck)
+        if not public_cards == None:
+            card_deck.exclude(public_cards)
         hole_pairs_by_type: dict[list[Card]] = {}
         deck: list[Card] = card_deck.cards
         for card1 in deck:
@@ -347,20 +371,33 @@ if __name__ == "__main__":
     #     for card in subset:
     #         print(card)
     
-    utility_matrix, hole_pair_keys = poker_oracle.utility_matrix_generator(card_deck.deal(3))
-    # utility_matrix, hole_pair_keys, utility_matrix = poker_oracle.utility_matrix_generator(card_deck.deal(3))
+    pc = card_deck.deal(5)
+    h1 = card_deck.deal(2)
+    h2 = card_deck.deal(2)
     
-    hole_pair_1 = card_deck.deal(2)
-    hole_pair_2 = card_deck.deal(2)
+    print(len(poker_oracle.get_all_hole_pair_keys()))
     
-    index_hole_pair_1, index_hole_pair_2 = poker_oracle.get_utility_matrix_indices_by_hole_cards(hole_pair_1, hole_pair_2)
-    hole_pair_key_1 = poker_oracle.get_hole_pair_key(hole_pair_1)
-    hole_pair_key_2 = poker_oracle.get_hole_pair_key(hole_pair_2)
+    # utility_matrix, hole_pair_keys = poker_oracle.utility_matrix_generator(card_deck.deal(5))
     
-    # print(len(utility_matrix), len(hole_pair_keys))
-    print(utility_matrix.shape)
-    # [print(row) for row in utility_matrix]
-    # print(utility_matrix[hole_pair_key_1][index_hole_pair_2], utility_matrix[index_hole_pair_1][index_hole_pair_2])
-    print(utility_matrix[index_hole_pair_1][index_hole_pair_2])
+    # NOTE: Utiliti matrix generator does a lot of showdown evaluations.
+    # When there are more than 3 public cards, the evaluation needs to check all 5 card combinations
+    # to find the best one.
+    # Even though the utility matrix has fewer entries in the 5 public card version,
+    # the run time of each evaluation increases.
+    # For 3 public cards the time to 100 000 evaluations was about 14 seconds
+    # For 5 public cards the time to 100 000 evaluations was about 48 seconds, about 3.5 times slower
+    # Thus, generating the matrix for 5 public cards is a deal slower than for 3 public cards.
+    # Using the functools.cache decorator did not provide any significant improvement.
+    
+    # hole_pair_1 = card_deck.deal(2)
+    # hole_pair_2 = card_deck.deal(2)
+    
+    # index_hole_pair_1, index_hole_pair_2 = poker_oracle.get_utility_matrix_indices_by_hole_cards(hole_pair_1, hole_pair_2)
+    # hole_pair_key_1 = poker_oracle.get_hole_pair_key(hole_pair_1)
+    # hole_pair_key_2 = poker_oracle.get_hole_pair_key(hole_pair_2)
+    
+    # print(utility_matrix.shape)
+    # print(utility_matrix[index_hole_pair_1][index_hole_pair_2])
+
     
     
