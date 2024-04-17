@@ -80,6 +80,7 @@ class PokerStateManager:
             next_player = players[next_index]
             action_to_generated_state, players = PokerGameManager.handle_fold(player, players)
             if player == state.acting_player:
+                print("HERE !!!")
                 child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
             else:
                 if self.begin_new_round(players, state_copy.round_action_history):
@@ -89,6 +90,7 @@ class PokerStateManager:
                     updated_round_history = [*state_copy.round_action_history, action]
                 new_depth = state.depth + 1
                 if len(players) == 1: # Acting player has won
+                    print("HEEEEEEERE")
                     child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
                 else:
                     print("HERE") #NOTE: Never gets here with two players
@@ -129,23 +131,20 @@ class PokerStateManager:
                       "river": 3,
                       "showdown": 4}
         
-        
         if isinstance(state, TerminalState):
             return
         
         if len(state.players) == 1:
             return
         
-        # if state.stage == end_stage and state.depth == end_depth:
-        #     return
-        
         if stage_dict[state.stage] >= stage_dict[end_stage] and state.depth >= end_depth:
             return
         
+        if stage_dict[state.stage] > stage_dict[end_stage]:
+            return
+        
         next_state_type = self.determine_next_state_type(state)
-        
-        # print(state.stage, state.depth, next_state_type)
-        
+                
         if next_state_type == "PLAYER":
             self.generate_all_child_states(state, end_stage, end_depth)
             for child in state.children:
@@ -166,24 +165,20 @@ class PokerStateManager:
         return
         
     def get_all_showdown_outcomes(self, state):
-        for player in state.players:
-            result_state = TerminalState(state.acting_player, state.players, state.pot, "showdown", state.depth+1, stage="showdown", winner=player)
-            state.children.append(result_state)
-        tie_state = TerminalState(state.acting_player, state.players, state.pot/2, "showdown", state.depth+1, stage="showdown", winner=None)
-        state.children.append(tie_state)
+        showdown_state = copy.deepcopy(state)
+        showdown_state.origin_action = "showdown"
+        showdown_state.stage = "showdown"
+        state.children.append(showdown_state)
+        for player in showdown_state.players:
+            result_state = TerminalState(showdown_state.acting_player, showdown_state.players, showdown_state.pot, "showdown", showdown_state.depth+1, stage="showdown", winner=player)
+            showdown_state.children.append(result_state)
+        tie_state = TerminalState(showdown_state.acting_player, showdown_state.players, showdown_state.pot/2, "showdown", showdown_state.depth+1, stage="showdown", winner=None)
+        showdown_state.children.append(tie_state)
         
     def determine_next_state_type(self, state):
         # NOTE: Next state is chance node if current state is end of stage
         
         round_history = state.round_action_history
-        # num_players_in_round: int = len(state.players)
-        # print(len(state.players), state.depth)
-        # current_round_index = num_players_in_round + (state.depth % num_players_in_round)
-        # current_round_history = round_history[-current_round_index:]
-        
-        # is_end_of_stage = PokerGameManager.can_go_to_next_stage(current_round_history)
-        
-        # print(round_history)
         is_end_of_stage = PokerGameManager.can_go_to_next_stage(round_history)
         
         if is_end_of_stage:
@@ -218,7 +213,7 @@ class PokerStateManager:
         
             event_state: PlayerState = copy.deepcopy(state)
             # NOTE: Depth referrs to the depth WITHIN a stage. Since a chance node initiates a new stage, the depth should be set to 0.
-            event_state.depth = 0
+            event_state.depth = 1
             event_state.round_action_history = []
             event_public_cards = [*state.public_cards, *new_public_cards]
             event_state.stage = next_stage
@@ -231,18 +226,8 @@ class PokerStateManager:
             chance_state.children.append(chance_event)
             
         return chance_state
-    
-    
-    # TODO: FROM RESOLVER EXPLAINATION IN TASK DESCRIPTION: NEED TO GENERATE A COMPLETE SUBTREE TO A PRE-DEFINED DEPTH OF A STAGE!
-    
-    # TODO: Add "showdown" classification for state
-    
-    # TODO: SIMPLIFICATION FOR CHANCE NODES: HARD LIMIT ON NUMBER RANDOM EVENTS THAT CAN BE PERFORMED ON A CHANCE NODE.
-    # EACH CHILD IS ASSOCIATED WITH A DIFFERENT PUBLIC CARD (OR CARDS IN CASE FOR THE FLOP STAGE)
-    
-    
+            
 class PlayerState:
-    # TODO: Consider removing default values, cause more confusion than help i think
     def __init__(self, acting_player, players, current_state_acting_player, public_cards, pot, num_raises_left, bet_to_call, stage, origin_action, round_action_history, depth):
         self.acting_player = acting_player
         self.players = players
@@ -256,16 +241,24 @@ class PlayerState:
         
         self.depth = depth
         
+        self._strategy_matrix = None
+        
         self.round_action_history = round_action_history
         self.origin_action = origin_action
         self.children = []
         
+    def set_strategy_matrix(self, strategy_matrix):
+        self._strategy_matrix = strategy_matrix
+        
+    def get_strategy_matrix(self):
+        return self._strategy_matrix
         
 class ChanceState:
     
     def __init__(self, card_deck, stage, max_num_events, player_state, event):
         self.card_deck = card_deck
         self.stage = stage
+        # TODO: Should have depth of 0 in the new stage 
         self.player_state = player_state
         self.event = event # NOTE: Event is list of public cards that was drawn from card deck. Empty list indicates "initial" chance state
         
@@ -312,10 +305,9 @@ if __name__ == "__main__":
                                                    )
     
     # TODO: Works for end_stage="pre-flop" and depth = 0 OR 1.
-    # For some reason the tree reaches beyond the limit in subtree method...
     state_manager.generate_subtree_to_given_stage_and_depth(root_state, 
                                                             end_stage="pre-flop", 
-                                                            end_depth=2)
+                                                            end_depth=16)
     
     def print_subtree(state, depth = 0):
         for child in state.children:
@@ -329,8 +321,25 @@ if __name__ == "__main__":
                 print("CHANCE", child.event, child.player_state.depth, child.stage, child.player_state.stage)
                 # print("CHANCE", child.event, depth, child.stage, child.player_state.stage)
             print_subtree(child, depth + 1)
-            
-    print_subtree(root_state)
+    
+    # print_subtree(root_state)
+    
+    # print("========================================================\n")
+    def iterative_print_subtree(state: PlayerState):
+        nodes = state.children
+        while not nodes == []:
+            child = nodes.pop()
+            if isinstance(child, PlayerState):
+                print("PLAYER", child.origin_action, child.depth, child.stage)
+            if isinstance(child, TerminalState):
+                print("TERMINAL", child.origin_action, child.depth, child.stage)
+            if isinstance(child, ChanceState):
+                print("CHANCE", child.event, child.player_state.depth, child.stage, child.player_state.stage)
+            if not child.children == []:
+                for grand_child in child.children:
+                    nodes.append(grand_child)
+                    
+    iterative_print_subtree(root_state)
     
     # def get_all_children(state, depth=0):
     #     for child in state.children:
