@@ -2,6 +2,7 @@ from card_deck import Card, CardDeck
 from itertools import combinations
 import random
 import numpy as np
+import pandas as pd
 
 
 class PokerOracle:
@@ -166,7 +167,7 @@ class PokerOracle:
             dealt_public_cards = [*public_cards]
             num_public_cards_to_deal -= len(public_cards)
             [exclude_from_deck.append(card) for card in public_cards]
-        for _ in range(rollout_count):
+        for i in range(rollout_count):
             # Generate card deck with known private and public card excluded
             card_deck = CardDeck(limited=self.use_limited_deck)
             card_deck.exclude(exclude_from_deck)
@@ -195,31 +196,59 @@ class PokerOracle:
                     break
             if win_rollout:
                 num_rollout_wins += 1
-            
+                            
         hole_pair_win_probability = num_rollout_wins / rollout_count
         return hole_pair_win_probability
     
+    
     def poker_cheat_sheet_generator(self, max_num_opponents: int, num_rollouts: int) -> list[list[float]]:
-        hole_pair_types = self.get_all_hole_pairs_by_type()
-        cheat_sheet: dict[list[float]] = {}
+        hole_pair_types = self.get_all_hole_pairs_by_type()     
+        cheat_sheet: list[list[float]] = []
         pair_types = list(hole_pair_types.keys())
-        print("Number of pair types:", len(pair_types))
-        for pair_type in pair_types:
-            cheat_sheet[pair_type] = []
-            random_hole_pair = random.choice(hole_pair_types[pair_type])
-            for i in range(max_num_opponents):
-                num_opponents = i + 1
+        for i in range(len(hole_pair_types)):
+            cheat_sheet.append([])
+            random_hole_pair = random.choice(hole_pair_types[pair_types[i]])
+            for j in range(max_num_opponents):
+                num_opponents = j + 1
+                print(f"Beginning rollouts for {num_opponents} opponents for type {i+1}/{len(hole_pair_types)}") 
                 winning_probability = self.rollout_hole_pair_evaluator(random_hole_pair, None, num_opponents, num_rollouts)
-                cheat_sheet[pair_type].append(winning_probability)       
-        return cheat_sheet
+                cheat_sheet[i].append(winning_probability)
+                print(f"Finished rollouts for {num_opponents} opponents")
+        
+        return np.asarray(cheat_sheet)
     
     
-    # TODO: Create method for saving cheat sheet to file
+    def generate_and_save_cheat_sheet(self, max_num_opponents: int, num_rollouts: int):
+        cheat_sheet = self.poker_cheat_sheet_generator(max_num_opponents, num_rollouts)
+        file_name = ""
+        if self.use_limited_deck:
+            file_name += "limited_"
+        file_name += f"{max_num_opponents}opponents_{num_rollouts}rollouts.csv"
+        df_cheat_sheet = pd.DataFrame(np.asarray(cheat_sheet))
+        df_cheat_sheet.to_csv(f"cheat_sheets/{file_name}", index=False)
+        return np.asarray(cheat_sheet)
+        
+        
+    def load_cheat_sheet(self, max_num_opponents: int, num_rollouts: int) -> list[list[float]]:
+        file_name = ""
+        if self.use_limited_deck:
+            file_name += "limited_"
+        file_name += f"{max_num_opponents}opponents_{num_rollouts}rollouts.csv"
+        try:
+            cheat_sheet = pd.read_csv(f"cheat_sheets/{file_name}")
+            cheat_sheet = cheat_sheet.to_numpy()
+        except:
+            cheat_sheet = None
+        return cheat_sheet      
+        
+    
     def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int, 
                                                cheat_sheet: dict[list[float]]) -> float:
+        all_hole_pair_types = list(self.get_all_hole_pairs_by_type().keys())
         hole_pair_type = self.get_hole_pair_type(hole_pair)
+        hole_pair_type_index = all_hole_pair_types.index(hole_pair_type)
         num_opponents_index = num_opponents - 1
-        win_probability = cheat_sheet[hole_pair_type][num_opponents_index]
+        win_probability = cheat_sheet[hole_pair_type_index][num_opponents_index]
         return win_probability
         
         
@@ -238,6 +267,7 @@ class PokerOracle:
             else: 
                 pair_type = str(sorted_ranks[1]) + "_" + str(sorted_ranks[0]) + "_unsuited"
         return pair_type
+        
         
     def get_hole_pair_key(self, hole_pair: list[Card]) -> str:
         # NOTE: This differs from get_hole_pair_type by specifying
@@ -260,7 +290,8 @@ class PokerOracle:
             pair_key = f"{str(highest_card.get_rank())}{highest_card.get_suit()}_{str(lowest_card.get_rank())}{lowest_card.get_suit()}"
         return pair_key
         
-    def utility_matrix_generator(self, public_cards: list[Card]) -> dict[dict[int]]:
+        
+    def utility_matrix_generator(self, public_cards: list[Card]) -> tuple[list[list[int]], list[int]]:
         utility_matrix: list[list[int]] = []
         all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
         hole_pair_types = list(all_hole_pairs_by_type.keys()) 
@@ -276,7 +307,6 @@ class PokerOracle:
                 if not hole_pair_key in hole_pair_keys:
                     all_hole_pairs.append(hole_pair)
                     hole_pair_keys.append(hole_pair_key)
-        count = 0
         for index_1, hole_pair_1 in enumerate(all_hole_pairs):
             utility_matrix.append([])
             for _, hole_pair_2 in enumerate(all_hole_pairs):
@@ -287,8 +317,6 @@ class PokerOracle:
                 else:
                     # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
                     winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
-                    print("Evaluated", count)
-                    count += 1
                     utility_matrix[index_1].append(winner)
                     
         self.hole_pair_keys = hole_pair_keys
@@ -311,7 +339,7 @@ class PokerOracle:
         self.hole_pair_keys = hole_pair_keys
         return self.hole_pair_keys
 
-    # TODO: Need to change this, since Resolver does not operate with hole cards but with ranges
+
     def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
         # NOTE: Allows for getting the entry in the utility matrix directly from the hole cards
         key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
@@ -319,6 +347,7 @@ class PokerOracle:
         index_hole_pair_1 = self.hole_pair_keys.index(key_hole_pair_1)
         index_hole_pair_2 = self.hole_pair_keys.index(key_hole_pair_2)
         return index_hole_pair_1, index_hole_pair_2
+
 
     def is_card_overlap(self, hole_pair_1: list[Card], hole_pair_2: list[Card], public_cards: list[Card]) -> bool:
         for card1 in hole_pair_1:
@@ -335,10 +364,9 @@ class PokerOracle:
                     return True
         return False         
     
-    def get_all_hole_pairs_by_type(self, public_cards: list[Card] = None) -> dict[list[Card]]:
+    
+    def get_all_hole_pairs_by_type(self) -> dict[list[Card]]:
         card_deck = CardDeck(limited=self.use_limited_deck)
-        if not public_cards == None:
-            card_deck.exclude(public_cards)
         hole_pairs_by_type: dict[list[Card]] = {}
         deck: list[Card] = card_deck.cards
         for card1 in deck:
@@ -359,7 +387,7 @@ class PokerOracle:
 
 if __name__ == "__main__":
 
-    use_limited_deck = False
+    use_limited_deck = True
 
     poker_oracle = PokerOracle(use_limited_deck)
     card_deck = CardDeck(use_limited_deck)
@@ -371,13 +399,15 @@ if __name__ == "__main__":
     #     for card in subset:
     #         print(card)
     
-    pc = card_deck.deal(5)
-    h1 = card_deck.deal(2)
-    h2 = card_deck.deal(2)
+    # pc = card_deck.deal(5)
+    # h1 = card_deck.deal(2)
+    # h2 = card_deck.deal(2)
     
-    print(len(poker_oracle.get_all_hole_pair_keys()))
+    # print(len(poker_oracle.get_all_hole_pair_keys()))
     
-    # utility_matrix, hole_pair_keys = poker_oracle.utility_matrix_generator(card_deck.deal(5))
+    # ============== UTILITY MATRIX ===============
+    
+    # utility_matrix, hole_pair_keys = poker_oracle.utility_matrix_generator(card_deck.deal(3))
     
     # NOTE: Utiliti matrix generator does a lot of showdown evaluations.
     # When there are more than 3 public cards, the evaluation needs to check all 5 card combinations
@@ -398,6 +428,20 @@ if __name__ == "__main__":
     
     # print(utility_matrix.shape)
     # print(utility_matrix[index_hole_pair_1][index_hole_pair_2])
+    
+    
+    # ============ CHEAT SHEET ==============
+    
+    # cheat_sheet_gen = poker_oracle.generate_and_save_cheat_sheet(6, 100)
+    # cheat_sheet_load = poker_oracle.load_cheat_sheet(6, 100)
+    
+    # print(cheat_sheet_gen)
+    # print(cheat_sheet_load)
+    # print(cheat_sheet_gen == cheat_sheet_load)
+    
+    print()
+    poker_oracle.generate_and_save_cheat_sheet(6, 1000)
+    
 
     
     
