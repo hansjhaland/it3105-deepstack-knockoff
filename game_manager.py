@@ -1,6 +1,7 @@
 from poker_oracle import PokerOracle
 from card_deck import Card, CardDeck
 
+
 class PokerGameManager:
     
     def __init__(self, use_limited_deck=False):
@@ -20,6 +21,9 @@ class PokerGameManager:
         self.current_game_players = []
         self.current_hand_players = []
         self.current_round_actions = []
+    
+        
+    
     
     # NOTE: Based on "Generate Poker Agents" from slides
     def add_poker_agent(self, agent_type: str, chips: int, name: str) -> None:
@@ -64,13 +68,19 @@ class PokerGameManager:
         # Run one hand to showdown
         self.current_hand_players = self.current_game_players[:]
         
+        card_deck: CardDeck = self.poker_oracle.get_deck_of_cards()
+        card_deck.shuffle()
+        for player in self.current_hand_players:
+            player.recieve_hole_cards(card_deck.deal(2))
         while len(self.current_hand_players) > 1:
             card_deck: CardDeck = self.poker_oracle.get_deck_of_cards()
             card_deck.shuffle()
             if not self.public_cards == []:
                 card_deck.exclude(self.public_cards)
-            for player in self.current_hand_players:
-                player.recieve_hole_cards(card_deck.deal(2))
+            for player in self.current_game_players:
+                card_deck.exclude(player.hole_cards)
+            print()
+            print(f"============ Sart of {self.current_stage} stage ============")
             self.run_one_stage(card_deck, small_blind_index, big_blind_index)
             print("Players remaining in hand:", *self.current_hand_players, "after stage", self.current_stage)
             
@@ -150,6 +160,8 @@ class PokerGameManager:
             remove_folded_players = False # NOTE: Don't remove folded players directly after buy in round. May cause crash if someone folded in buy in round.
             
             while not (PokerGameManager.can_go_to_next_stage(self.current_round_actions) or self.can_go_to_next_hand(self.current_hand_players)):
+                print()
+                print(f"============ New round in {self.current_stage} stage ============")
                 # Update player order if someone folded
                 if remove_folded_players:
                     while "fold" in self.current_round_actions:
@@ -165,8 +177,31 @@ class PokerGameManager:
                     if len(self.current_hand_players) == 1:
                         # No need for player to decide action, because all other players have folded
                         break
-                    desired_action = player.get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                    if isinstance(player, HumanPlayer):
+                        game_snapshot = {"small_blind_player": self.current_hand_players[small_blind_index],
+                             "big_blind_player": self.current_hand_players[big_blind_index],
+                             "public_cards": self.public_cards,
+                             "pot": self.pot,
+                             "table_bet": self.current_bet,
+                             "stage": self.current_stage
+                             }
+            
+                        game_snapshot["all_player_bets"] = []
+                        game_snapshot["all_player_chips"] = []
+                        for round_player in self.current_hand_players:
+                            if not round_player.name == player.name: 
+                                game_snapshot["all_player_bets"].append((round_player.name, player.current_bet))
+                                game_snapshot["all_player_chips"].append((round_player.name, player.num_chips))
+                        desired_action = player.get_action(self.public_cards, game_snapshot)
+                    else:
+                        desired_action = player.get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(player, desired_action, legal_num_raises)
+                    if not desired_action == played_action:
+                        print(f"Player {player.name} wanted to {desired_action} but had to {played_action}")
+                        print()
+                    else:
+                        print(f"Player {player.name} decided to {played_action}")
+                        print()
                     self.current_round_actions.append(played_action)            
 
             
@@ -176,14 +211,27 @@ class PokerGameManager:
         big_blind_index = big_blind_index
         initial_player_count = len(self.current_hand_players)
         
-        print("Small blind:", self.current_hand_players[small_blind_index])
-        print("Big blind:", self.current_hand_players[big_blind_index])
-        
         for i in range(initial_player_count):
             
             if initial_player_count > len(self.current_hand_players):
                 i, small_blind_index, big_blind_index = self.adjust_player_index_for_removal(i, small_blind_index, big_blind_index, initial_player_count)
+                   
+            game_snapshot = {"small_blind_player": self.current_hand_players[small_blind_index],
+                             "big_blind_player": self.current_hand_players[big_blind_index],
+                             "public_cards": self.public_cards,
+                             "table_bet": self.current_bet,
+                             "pot": self.pot,
+                             "stage": self.current_stage
+                             }
             
+            game_snapshot["all_player_bets"] = []
+            game_snapshot["all_player_chips"] = []
+            for player in self.current_hand_players:
+                if not player.name == self.current_hand_players[i].name:
+                    game_snapshot["all_player_bets"].append((player.name, player.current_bet))
+                    game_snapshot["all_player_chips"].append((player.name, player.num_chips))
+                
+            print_player = self.current_hand_players[i].name
             played_action = ""
             if i == small_blind_index: 
                 if self.current_hand_players[i].num_chips < self.small_blind_chips:
@@ -193,8 +241,18 @@ class PokerGameManager:
                     played_action, self.current_hand_players = PokerGameManager.handle_fold(self.current_hand_players[i], self.current_hand_players)
                 else:
                     self.pot += self.current_hand_players[i].bet(self.small_blind_chips)
-                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                    game_snapshot["pot"] = self.pot
+                    if isinstance(self.current_hand_players[i], HumanPlayer):
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
+                    else:
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
+                    if not desired_action == played_action:
+                        print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
+                        print()
+                    else:
+                        print(f"Player {print_player} decided to {played_action}")
+                        print()
             elif i == big_blind_index:
                 if self.current_hand_players[i].num_chips < self.big_blind_chips:
                     # If not enough chips for big blind, player is out
@@ -203,11 +261,23 @@ class PokerGameManager:
                     played_action, self.current_hand_players = PokerGameManager.handle_fold(self.current_hand_players[i], self.current_hand_players)
                 else:
                     self.pot += self.current_hand_players[i].bet(self.big_blind_chips)
-                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                    if isinstance(self.current_hand_players[i], HumanPlayer):
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
+                    else:
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
+                    if not desired_action == played_action:
+                        print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
+                        print()
+                    else:
+                        print(f"Player {print_player} decided to {played_action}")
+                        print()
             else:
                 try:
-                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                    if isinstance(self.current_hand_players[i], HumanPlayer):
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
+                    else:
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                 except:
                     print(f"Player index {i}")
                     print(f"Number of players {len(self.current_hand_players)}")
@@ -215,6 +285,13 @@ class PokerGameManager:
                     print(f"Player {big_blind_index}, {self.current_hand_players[big_blind_index]}")
                     print()
                 played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
+                if not desired_action == played_action:
+                    print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
+                    print()
+                else:
+                    print(f"Player {print_player} decided to {played_action}")
+                    print()
+                
             self.current_round_actions.append(played_action)
         
         return legal_num_raises
@@ -383,18 +460,21 @@ class RolloutPokerAgent(PokerAgent):
         # TODO: Should have a probaibility of bluffin, i.e. a probability of raining with a bad hand (when you actually want to fold)
         if public_cards == []:
             try:
-                cheat_sheet = poker_oracle.load_cheat_sheet(6, 1000)
+                OPPONENTS = 6
+                ROLLOUTS = 1000
+                cheat_sheet = poker_oracle.load_cheat_sheet(OPPONENTS, ROLLOUTS)
                 win_probability = poker_oracle.get_cheat_sheet_hole_pair_probabilitiy(self.hole_cards, num_opponents, cheat_sheet)
             except:
                  win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count)
         else:
             win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
         if win_probability >= 0.3:
-            return "raise"
+            action = "raise"
         if win_probability >= 0.05:
-            return "call"
+            action = "call"
         else:
-            return "fold" 
+            action = "fold" 
+        return action
         
         
 class ResolverPokerAgent(PokerAgent):
@@ -414,22 +494,39 @@ class CombinationPokerAgent(PokerAgent):
 
 
 class HumanPlayer(PokerAgent):
-    # TODO: TEST THIS
     def __init__(self, type: str, initial_chips: int, name: str):
         super().__init__(type, initial_chips, name)
     
-    def get_action(self, public_cards: list[Card], current_pot: int, table_bet) -> str:
-        print(f"Your hole cards: {self.hole_cards}")
+    def get_action(self, public_cards: list[Card], game_snapshot) -> str:
+        hole_cards = [str(card) for card in self.hole_cards]
+        public_cards = [str(card) for card in public_cards]
+        index_to_action = {"0": "fold", "1": "call", "2": "raise"}
+        pot = game_snapshot["pot"]
+        table_bet = game_snapshot["table_bet"]
+        all_player_bet = game_snapshot["all_player_bets"]
+        all_player_chips = game_snapshot["all_player_chips"]
+        small_blind = game_snapshot["small_blind_player"]
+        big_blind = game_snapshot["big_blind_player"]
+        print(f"Player {self.name}'s turn!")
+        print("Cards:")
+        print(f"Your hole cards: {hole_cards}")
         print(f"Public cards: {public_cards}")
-        print(f"Current pot: {current_pot}")
+        print("Pot, bets and piles:")
+        print(f"Current pot: {pot}")
         print(f"Bet on table: {table_bet}")
         print(f"Your current bet: {self.current_bet}")
-        print(f"Other players bets: ")
+        print(f"Other players current bet: {all_player_bet}")
         print(f"Number of chips for call: {table_bet - self.current_bet if table_bet > self.current_bet else 0}")
         print(f"Your pile of chips: {self.num_chips}")
-        print(f"Other players piles of chips: ")
-        print("Choose action: fold, call, raise")
-        action = input()
+        print(f"Other players piles of chips: {all_player_chips}")
+        print("Blinds:")
+        print(f"Player {small_blind} is small blind")
+        print(f"Player {big_blind} is big blind")
+        print("Choose action: 0 (fold), 1 (call), 2 (raise)")
+        action_index = ""
+        while action_index not in list(index_to_action.keys()):
+            action_index = input("> ")
+        action = index_to_action[action_index]
         return action
     
     
@@ -441,11 +538,12 @@ if __name__ == "__main__":
     print(game_manager.poker_oracle.get_deck_of_cards())
     print(f"Number of cards: {len(game_manager.poker_oracle.get_deck_of_cards().cards)}") # NOTE: Somehow more chips are added...
     game_manager.add_poker_agent("rollout", 30, "Alice")
-    game_manager.add_poker_agent("rollout", 30, "Bob")
-    game_manager.add_poker_agent("rollout", 30, "Chris")
-    game_manager.add_poker_agent("rollout", 30, "Dave")
-    game_manager.add_poker_agent("rollout", 30, "Eric")
-    game_manager.add_poker_agent("rollout", 30, "Fred")
+    game_manager.add_poker_agent("human", 30, "Hans")
+    # game_manager.add_poker_agent("rollout", 30, "Bob")
+    # game_manager.add_poker_agent("rollout", 30, "Chris")
+    # game_manager.add_poker_agent("rollout", 30, "Dave")
+    # game_manager.add_poker_agent("rollout", 30, "Eric")
+    # game_manager.add_poker_agent("rollout", 30, "Fred")
     
     game_manager.run_one_game()
     
