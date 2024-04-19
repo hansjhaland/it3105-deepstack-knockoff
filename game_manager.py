@@ -1,7 +1,6 @@
 from poker_oracle import PokerOracle
 from card_deck import Card, CardDeck
 
-
 class PokerGameManager:
     
     def __init__(self, use_limited_deck=False):
@@ -340,7 +339,7 @@ class PokerGameManager:
     # This will be called each time a player capable of using the resolver is to make a decision. Maybe this should be a Agent method and not Game Manager method.
     
     
-class PokerAgent:
+class PokerAgent():
     def __init__(self, type: str, initial_chips: int, name: str):
         self.name = name
         self.type = type
@@ -382,7 +381,14 @@ class RolloutPokerAgent(PokerAgent):
         # TODO: Probability thresholds should be initialization paramaters
         # TODO: The probabilities could vary depending on stage of the game
         # TODO: Should have a probaibility of bluffin, i.e. a probability of raining with a bad hand (when you actually want to fold)
-        win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
+        if public_cards == []:
+            try:
+                cheat_sheet = poker_oracle.load_cheat_sheet(6, 1000)
+                win_probability = poker_oracle.get_cheat_sheet_hole_pair_probabilitiy(self.hole_cards, num_opponents, cheat_sheet)
+            except:
+                 win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count)
+        else:
+            win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
         if win_probability >= 0.3:
             return "raise"
         if win_probability >= 0.05:
@@ -408,6 +414,7 @@ class CombinationPokerAgent(PokerAgent):
 
 
 class HumanPlayer(PokerAgent):
+    # TODO: TEST THIS
     def __init__(self, type: str, initial_chips: int, name: str):
         super().__init__(type, initial_chips, name)
     
@@ -417,8 +424,10 @@ class HumanPlayer(PokerAgent):
         print(f"Current pot: {current_pot}")
         print(f"Bet on table: {table_bet}")
         print(f"Your current bet: {self.current_bet}")
+        print(f"Other players bets: ")
         print(f"Number of chips for call: {table_bet - self.current_bet if table_bet > self.current_bet else 0}")
-        print(f"Your chips: {self.num_chips}")
+        print(f"Your pile of chips: {self.num_chips}")
+        print(f"Other players piles of chips: ")
         print("Choose action: fold, call, raise")
         action = input()
         return action
