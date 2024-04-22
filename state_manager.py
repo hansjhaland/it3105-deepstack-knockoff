@@ -1,4 +1,3 @@
-import sys
 from card_deck import CardDeck
 from game_manager import PokerGameManager
 import copy
@@ -18,8 +17,8 @@ class PokerStateManager:
         self.max_num_events = 1 # NOTE: Arbitrary number
         
         
-    def generate_root_state(self, acting_player, players, public_cards, pot, num_raises_left, bet_to_call, stage, initial_round_action_history, initial_depth):
-        return PlayerState(acting_player, players, acting_player, public_cards, pot, num_raises_left, bet_to_call, stage, "root", initial_round_action_history, initial_depth)
+    def generate_root_state(self, acting_player, players, public_cards, pot, num_raises_left, bet_to_call, stage, initial_round_action_history, initial_depth, strategy_matrix=None):
+        return PlayerState(acting_player, players, acting_player, public_cards, pot, num_raises_left, bet_to_call, stage, "root", initial_round_action_history, initial_depth, strategy_matrix)
     
     
     def generate_child_state_from_action(self, state, action):
@@ -49,7 +48,7 @@ class PokerStateManager:
                 else:
                     updated_round_history = [*state.round_action_history, action]
                 new_depth = state.depth + 1
-                child_state = PlayerState(state.acting_player, players, next_player, state.public_cards, pot, num_raises_left, bet_to_call, state.stage, action_to_generated_state, updated_round_history, new_depth)
+                child_state = PlayerState(state.acting_player, players, next_player, state.public_cards, pot, num_raises_left, bet_to_call, state.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
         if self.already_generated_state(state, action):
             return None, None
         if action == "call": 
@@ -68,7 +67,7 @@ class PokerStateManager:
                 else:
                     updated_round_history = [*state.round_action_history, action]
                 new_depth = state.depth + 1
-                child_state = PlayerState(state.acting_player, players, next_player, state.public_cards, pot, state.num_raises_left, state.bet_to_call, state.stage, action_to_generated_state, updated_round_history, new_depth)
+                child_state = PlayerState(state.acting_player, players, next_player, state.public_cards, pot, state.num_raises_left, state.bet_to_call, state.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
         if self.already_generated_state(state, action):
             return None, None
         if action == "fold": 
@@ -94,7 +93,7 @@ class PokerStateManager:
                     child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
                 else:
                     print("HERE") #NOTE: Never gets here with two players
-                    child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth)
+                    child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
         return child_state, action_to_generated_state
     
     def begin_new_round(self, players, round_history):
@@ -119,9 +118,10 @@ class PokerStateManager:
         # if state.stage == end_stage and state.depth >= end_depth:
         #     return
         for action in ["fold", "call", "raise"]:
-            child_state, _ = self.generate_child_state_from_action(state, action)
-            if child_state is not None:
+            child_state, generated_action = self.generate_child_state_from_action(state, action)
+            if child_state is not None and generated_action not in state.actions_to_children:
                 state.children.append(child_state)
+                state.actions_to_children.append(generated_action)
     
     
     def generate_subtree_to_given_stage_and_depth(self, state, end_stage, end_depth):
@@ -160,7 +160,12 @@ class PokerStateManager:
                 self.generate_subtree_to_given_stage_and_depth(child.children[0], end_stage, end_depth)
                 
         if next_state_type == "SHOWDOWN":
-            self.get_all_showdown_outcomes(state)
+            showdown_state = PlayerState(state.acting_player, state.players, state.current_state_acting_player, 
+                                         state.public_cards, state.pot, state.num_raises_left, state.bet_to_call, "showdown", 
+                                         state.origin_action, state.round_action_history, state.depth+1, state.get_strategy_matrix())
+            self.get_all_showdown_outcomes(showdown_state)
+            state.actions_to_children.append(state.origin_action)
+            state.children.append(showdown_state)
                 
         return
         
@@ -199,7 +204,6 @@ class PokerStateManager:
         card_deck.exclude(cards_to_exclude)
         card_deck.shuffle()
         
-        
         next_stage = PokerGameManager.get_next_stage(state.stage)
         
         chance_state = ChanceState(card_deck, next_stage, self.max_num_events, state, [])
@@ -224,11 +228,19 @@ class PokerStateManager:
             chance_event.children.append(event_state)  
             
             chance_state.children.append(chance_event)
+            chance_state.child_events.append(new_public_cards)
             
         return chance_state
+    
+    @staticmethod
+    def get_player_state_after_event(chance_state, event):
+        for possible_state in chance_state.children:
+            if possible_state.event == event:
+                preceding_player_state = possible_state.children[0]
+                return preceding_player_state
             
 class PlayerState:
-    def __init__(self, acting_player, players, current_state_acting_player, public_cards, pot, num_raises_left, bet_to_call, stage, origin_action, round_action_history, depth):
+    def __init__(self, acting_player, players, current_state_acting_player, public_cards, pot, num_raises_left, bet_to_call, stage, origin_action, round_action_history, depth, strategy_matrix):
         self.acting_player = acting_player
         self.players = players
         self.current_state_acting_player = current_state_acting_player
@@ -241,11 +253,23 @@ class PlayerState:
         
         self.depth = depth
         
-        self._strategy_matrix = None
+        self._strategy_matrix = strategy_matrix
+        # NOTE: Assume cumulative and positive regret has 
+        # same "shape" as strategy matrix, but with 
+        # 0 as initial values
+        if strategy_matrix is None:
+            self.cumulative_regret = None
+            self.positive_regret = None
+        else:
+            self.cumulative_regret = strategy_matrix * 0
+            self.positive_regret = strategy_matrix * 0
+        self.acting_player_evaluation = None
+        self.other_player_evaluation = None
         
         self.round_action_history = round_action_history
         self.origin_action = origin_action
         self.children = []
+        self.actions_to_children = []
         
     def set_strategy_matrix(self, strategy_matrix):
         self._strategy_matrix = strategy_matrix
@@ -258,6 +282,7 @@ class ChanceState:
     def __init__(self, card_deck, stage, max_num_events, player_state, event):
         self.card_deck = card_deck
         self.stage = stage
+        self.depth = 0
         # TODO: Should have depth of 0 in the new stage 
         self.player_state = player_state
         self.event = event # NOTE: Event is list of public cards that was drawn from card deck. Empty list indicates "initial" chance state
@@ -265,6 +290,7 @@ class ChanceState:
         self.max_num_events = max_num_events # One event corresponds to one public card being drawn (or one set of three cards for the flop)
         
         self.children = [] # Children will modify the public cards and stage of the player_state
+        self.child_events = []
         
         
 class TerminalState:
@@ -306,7 +332,7 @@ if __name__ == "__main__":
     
     # TODO: Works for end_stage="pre-flop" and depth = 0 OR 1.
     state_manager.generate_subtree_to_given_stage_and_depth(root_state, 
-                                                            end_stage="pre-flop", 
+                                                            end_stage="showdown", 
                                                             end_depth=16)
     
     def print_subtree(state, depth = 0):
