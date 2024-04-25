@@ -1,20 +1,20 @@
 from card_deck import CardDeck
-from game_manager import PokerGameManager
 import copy
 
 # NOTE: Starting with two-player case only
 class PokerStateManager:
 
-    def __init__(self, game_manager: PokerGameManager):
+    def __init__(self, num_chips_bet, small_blind_chips, big_blind_chips, legal_num_raises_per_stage, use_limited_deck):
         # NOTE: Setting same rules as the game manager
-        self.num_chips_bet = game_manager.num_chips_bet
-        self.small_blind_chips = game_manager.small_blind_chips
-        self.big_blind_chips = game_manager.big_blind_chips
-        self.legal_num_raises_per_stage = game_manager.legal_num_raises_per_stage
+        self.num_chips_bet = num_chips_bet
+        self.small_blind_chips = small_blind_chips
+        self.big_blind_chips = big_blind_chips
+        self.legal_num_raises_per_stage = legal_num_raises_per_stage
         
-        self.use_limited_deck = game_manager.use_limited_deck
+        self.use_limited_deck = use_limited_deck
         
-        self.max_num_events = 1 # NOTE: Arbitrary number
+        # NOTE: Arbitrary number
+        self.max_num_events = 1 # TODO: TRY INCREASING THIS! 
         
         
     def generate_root_state(self, acting_player, players, public_cards, pot, num_raises_left, bet_to_call, stage, initial_round_action_history, initial_depth, strategy_matrix=None):
@@ -34,7 +34,7 @@ class PokerStateManager:
             player = state.current_state_acting_player
             players = state.players
             current_bet = state.bet_to_call
-            bet_amount, action, num_raises_left, players = PokerGameManager.handle_raise(player, state.num_raises_left, current_bet, self.num_chips_bet, players,)
+            bet_amount, action, num_raises_left, players = PokerStateManager.handle_raise(player, state.num_raises_left, current_bet, self.num_chips_bet, players,)
             # If action is set to something else than raise, then the code will continue to the next apropriate "first level" if statement
             if action == "raise":
                 action_to_generated_state = action
@@ -55,7 +55,7 @@ class PokerStateManager:
             player = state.current_state_acting_player
             players = state.players
             current_bet = state.bet_to_call
-            bet_amount, action, players = PokerGameManager.handle_call(player, current_bet, players)
+            bet_amount, action, players = PokerStateManager.handle_call(player, current_bet, players)
             if action == "call":
                 action_to_generated_state = action
                 pot = state.pot + bet_amount
@@ -77,10 +77,11 @@ class PokerStateManager:
             players = state_copy.players.copy()
             next_index = (players.index(player) + 1) % len(players)
             next_player = players[next_index]
-            action_to_generated_state, players = PokerGameManager.handle_fold(player, players)
+            action_to_generated_state, players = PokerStateManager.handle_fold(player, players)
             if player == state.acting_player:
                 print("HERE !!!")
-                child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
+                # child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
+                child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
             else:
                 if self.begin_new_round(players, state_copy.round_action_history):
                     # print("NEW ROUND", state.round_action_history)
@@ -90,7 +91,8 @@ class PokerStateManager:
                 new_depth = state.depth + 1
                 if len(players) == 1: # Acting player has won
                     print("HEEEEEEERE")
-                    child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
+                    # child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
+                    child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
                 else:
                     print("HERE") #NOTE: Never gets here with two players
                     child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
@@ -184,7 +186,7 @@ class PokerStateManager:
         # NOTE: Next state is chance node if current state is end of stage
         
         round_history = state.round_action_history
-        is_end_of_stage = PokerGameManager.can_go_to_next_stage(round_history)
+        is_end_of_stage = PokerStateManager.can_go_to_next_stage(round_history)
         
         if is_end_of_stage:
             if state.stage == "river":
@@ -204,7 +206,7 @@ class PokerStateManager:
         card_deck.exclude(cards_to_exclude)
         card_deck.shuffle()
         
-        next_stage = PokerGameManager.get_next_stage(state.stage)
+        next_stage = PokerStateManager.get_next_stage(state.stage)
         
         chance_state = ChanceState(card_deck, next_stage, self.max_num_events, state, [])
         
@@ -239,6 +241,63 @@ class PokerStateManager:
                 preceding_player_state = possible_state.children[0]
                 return preceding_player_state
             
+    @staticmethod
+    def can_go_to_next_stage(round_actions: list[str]) -> bool:
+        action_counts = {"fold": 0, "call": 0, "raise": 0}
+        if len(round_actions) == 0:
+            return False
+        for action in round_actions:
+            action_counts[action] += 1
+        if action_counts["raise"] > 0:
+            return False
+        if action_counts["fold"] + action_counts["call"] == len(round_actions):
+            return True
+        return False # NOTE: Should not end up here! 
+    
+    @staticmethod
+    def get_next_stage(current_stage):
+        # NOTE: Currently handles only one "round", not the beginning of a new round
+        if current_stage == "pre-flop":
+            return "flop"
+        elif current_stage == "flop":
+            return "turn"
+        elif current_stage == "turn":
+            return "river"
+        elif current_stage == "river":
+            return "showdown"
+    
+    @staticmethod
+    def handle_fold(player, current_hand_players):
+        if player in current_hand_players:
+            current_hand_players.remove(player)
+        return  "fold", current_hand_players
+    
+    @staticmethod
+    def handle_call(player, current_bet, current_hand_players):
+        call_amount = current_bet - player.current_bet
+        bet_amount = 0
+        action = "call"
+        if call_amount > player.num_chips:
+            action, current_hand_players = PokerStateManager.handle_fold(player, current_hand_players)
+        else:
+            player.bet(call_amount)
+            bet_amount = call_amount
+        return bet_amount, action, current_hand_players
+    
+    @staticmethod
+    def handle_raise(player, num_remaining_raises: int, current_bet, big_blind_chips, current_hand_players):
+        raise_amount = big_blind_chips + (current_bet - player.current_bet) # NOTE: Assuming a raise means that you first go "even" with the current bet
+        bet_amount = 0
+        action = "raise"
+        if raise_amount > player.num_chips or num_remaining_raises == 0:
+           bet_amount, action, current_hand_players = PokerStateManager.handle_call(player, current_bet, current_hand_players)
+        else:
+            num_remaining_raises -= 1
+            player.bet(raise_amount)
+            bet_amount = raise_amount
+        return  bet_amount, action, num_remaining_raises, current_hand_players
+
+     
 class PlayerState:
     def __init__(self, acting_player, players, current_state_acting_player, public_cards, pot, num_raises_left, bet_to_call, stage, origin_action, round_action_history, depth, strategy_matrix):
         self.acting_player = acting_player
@@ -309,6 +368,8 @@ class TerminalState:
         
         
 if __name__ == "__main__":
+    from game_manager import PokerGameManager
+    
     game_manager = PokerGameManager()
     game_manager.add_poker_agent("rollout", 100, "Bob")
     game_manager.add_poker_agent("rollout", 100, "Alice")
@@ -317,7 +378,11 @@ if __name__ == "__main__":
     for player in game_manager.poker_agents:
         player.recieve_hole_cards(card_deck.deal(2))
     
-    state_manager = PokerStateManager(game_manager)
+    state_manager = PokerStateManager(game_manager.num_chips_bet, 
+                                      game_manager.small_blind_chips, 
+                                      game_manager.big_blind_chips, 
+                                      game_manager.legal_num_raises_per_stage, 
+                                      game_manager.use_limited_deck)
     
     root_state = state_manager.generate_root_state(acting_player=game_manager.poker_agents[0], 
                                                    players=game_manager.poker_agents, 

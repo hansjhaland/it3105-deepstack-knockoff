@@ -1,7 +1,6 @@
 import numpy as np
 from state_manager import PokerStateManager, PlayerState, ChanceState, TerminalState
 from poker_oracle import PokerOracle
-from game_manager import PokerGameManager
 from card_deck import Card, CardDeck
 import copy
 
@@ -131,14 +130,10 @@ class Resolver:
                 "showdown": 4}
         
         if self.is_showdown_state(state):
+            # TODO: GENERATING UTILITY MATRICES TAKSE TIME. SHOULD MAYBE STORE MATRICES.
             utility_matrix = self.get_utility_matrix_from_state(state)
             acting_player_evaluation = np.squeeze(np.matmul(utility_matrix, np.atleast_2d(other_player_range).T))
             other_player_evaluation = -1 * np.matmul(acting_player_range, utility_matrix)
-            print(utility_matrix.shape)
-            print(np.transpose(other_player_range).shape)
-            print(acting_player_range.shape)
-            print(acting_player_evaluation.shape)
-            print(other_player_evaluation.shape)
             print("SHOWDOWN:", state.stage, state.depth)
             
         elif stage_dict[state.stage] >= stage_dict[end_stage] and state.depth >= end_depth:
@@ -203,9 +198,10 @@ class Resolver:
                 for action in state.actions_to_children:
                     a = self.action_to_index[action]
                     state_after_action: PlayerState = PokerStateManager.get_child_state_by_action(state, action)
-                    # NOTE: Seems like cumulative regret often negative
+                    # NOTE: Seems like cumulative regret often negative. Leads to positive regrets becoming 0.
                     cumulative_regret[h][a] += (state_after_action.other_player_evaluation[h] - state.acting_player_evaluation[h])
-                    positive_regret[h][a] = np.maximum(0, cumulative_regret[h][a]) 
+                    # NOTE: Quick fix with 0.001 instead of 0
+                    positive_regret[h][a] = np.maximum(0.001, cumulative_regret[h][a]) 
             state.cumulative_regret = cumulative_regret
             state.positive_regret = positive_regret
             
@@ -219,7 +215,6 @@ class Resolver:
             
         return strategy_matrix
             
-
     # NOTE Based on slides page 63
     def bayesian_range_update(self, acting_player_range, action, strategy_matrix):
         prob_action_given_pair = strategy_matrix[:, self.action_to_index[action]]
@@ -239,7 +234,6 @@ class Resolver:
             
             root_node.acting_player_evaluation = acting_player_evaluation
             root_node.other_player_evaluation = other_player_evaluation
-            # TODO: Evaluations sometimes becomes full of nan values!
             print(acting_player_evaluation) 
             print(other_player_evaluation)
             strategy_matrix = self.update_strategy(root_node)
@@ -263,12 +257,17 @@ class Resolver:
     
     
 if __name__ == "__main__":
+    from game_manager import PokerGameManager
     
     use_limited_deck = True
     
     poker_oracle = PokerOracle(use_limited_deck)
     game_manager = PokerGameManager(use_limited_deck)
-    state_manager = PokerStateManager(game_manager)
+    state_manager = PokerStateManager(game_manager.num_chips_bet, 
+                                      game_manager.small_blind_chips, 
+                                      game_manager.big_blind_chips, 
+                                      game_manager.legal_num_raises_per_stage, 
+                                      game_manager.use_limited_deck)
     resolver = Resolver(state_manager, poker_oracle)
     
     card_deck = CardDeck(use_limited_deck)
