@@ -1,7 +1,6 @@
 from card_deck import CardDeck
 import copy
 
-# NOTE: Starting with two-player case only
 class PokerStateManager:
 
     def __init__(self, num_chips_bet, small_blind_chips, big_blind_chips, legal_num_raises_per_stage, use_limited_deck):
@@ -79,7 +78,7 @@ class PokerStateManager:
             next_player = players[next_index]
             action_to_generated_state, players = PokerStateManager.handle_fold(player, players)
             if player == state.acting_player:
-                print("HERE !!!")
+                # print("HERE !!!")
                 # child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
                 child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
             else:
@@ -90,7 +89,7 @@ class PokerStateManager:
                     updated_round_history = [*state_copy.round_action_history, action]
                 new_depth = state.depth + 1
                 if len(players) == 1: # Acting player has won
-                    print("HEEEEEEERE")
+                    # print("HEEEEEEERE")
                     # child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
                     child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
                 else:
