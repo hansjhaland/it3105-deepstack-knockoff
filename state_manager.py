@@ -13,7 +13,7 @@ class PokerStateManager:
         self.use_limited_deck = use_limited_deck
         
         # NOTE: Arbitrary number
-        self.max_num_events = 1 # TODO: TRY INCREASING THIS! 
+        self.max_num_events = 3 # TODO: TRY INCREASING THIS! 
         
         
     def generate_root_state(self, acting_player, players, public_cards, pot, num_raises_left, bet_to_call, stage, initial_round_action_history, initial_depth, strategy_matrix=None):
@@ -30,8 +30,8 @@ class PokerStateManager:
             return None, None
         action_to_generated_state = action
         if action == "raise":
-            player = state.current_state_acting_player
             players = state.players
+            player = state.current_state_acting_player
             current_bet = state.bet_to_call
             bet_amount, action, num_raises_left, players = PokerStateManager.handle_raise(player, state.num_raises_left, current_bet, self.num_chips_bet, players,)
             # If action is set to something else than raise, then the code will continue to the next apropriate "first level" if statement
@@ -78,6 +78,12 @@ class PokerStateManager:
             next_player = players[next_index]
             action_to_generated_state, players = PokerStateManager.handle_fold(player, players)
             if player == state.acting_player:
+                if self.begin_new_round(players, state_copy.round_action_history):
+                    # print("NEW ROUND", state.round_action_history)
+                    updated_round_history = [action]
+                else:
+                    updated_round_history = [*state_copy.round_action_history, action]
+                new_depth = state.depth + 1
                 # print("HERE !!!")
                 # child_state = TerminalState(player, players, state_copy.pot, action_to_generated_state, state.depth+1, state.stage)
                 child_state = PlayerState(state_copy.acting_player, players, next_player, state_copy.public_cards, state_copy.pot, state_copy.num_raises_left, state_copy.bet_to_call, state_copy.stage, action_to_generated_state, updated_round_history, new_depth, state.get_strategy_matrix())
@@ -163,9 +169,10 @@ class PokerStateManager:
         if next_state_type == "SHOWDOWN":
             showdown_state = PlayerState(state.acting_player, state.players, state.current_state_acting_player, 
                                          state.public_cards, state.pot, state.num_raises_left, state.bet_to_call, "showdown", 
-                                         state.origin_action, state.round_action_history, state.depth+1, state.get_strategy_matrix())
+                                         "call", state.round_action_history, state.depth+1, state.get_strategy_matrix())
             self.get_all_showdown_outcomes(showdown_state)
-            state.actions_to_children.append(state.origin_action)
+            # state.actions_to_children.append(state.origin_action) # NOTE: This may lead to "root" being appended to "acitons_to_children"
+            state.actions_to_children.append("call") # NOTE: Assuming transition to showdown is preceded by call
             state.children.append(showdown_state)
                 
         return

@@ -20,7 +20,6 @@ class Resolver:
         
         self.action_to_index = {"fold": 0, "call": 1, "raise": 2}
 
-
     def generate_initial_subtree(self, state, end_stage, end_depth):
         self.state_manager.generate_subtree_to_given_stage_and_depth(state, end_stage, end_depth)
         return state
@@ -35,7 +34,7 @@ class Resolver:
 
 
     def get_utility_matrix_from_state(self, state: PlayerState):
-        utility_matrix, _ = poker_oracle.utility_matrix_generator(state.public_cards)
+        utility_matrix, _ = self.poker_oracle.utility_matrix_generator(state.public_cards)
         return utility_matrix
 
 
@@ -134,11 +133,11 @@ class Resolver:
             utility_matrix = self.get_utility_matrix_from_state(state)
             acting_player_evaluation = np.squeeze(np.matmul(utility_matrix, np.atleast_2d(other_player_range).T))
             other_player_evaluation = -1 * np.matmul(acting_player_range, utility_matrix)
-            print("SHOWDOWN:", state.stage, state.depth)
+            # print("SHOWDOWN:", state.stage, state.depth)
             
         elif stage_dict[state.stage] >= stage_dict[end_stage] and state.depth >= end_depth:
             acting_player_evaluation, other_player_evaluation = self.run_neural_network(state.stage, state, acting_player_range, other_player_range)
-            print("NEURAL NET:", state.stage, state.depth)
+            # print("NEURAL NET:", state.stage, state.depth)
             
         elif stage_dict[state.stage] > stage_dict[end_stage]:
             acting_player_evaluation = np.zeros(len(self.get_all_hole_pairs()))
@@ -151,12 +150,13 @@ class Resolver:
         elif self.is_player_state(state):
             acting_player_evaluation = np.zeros(len(self.get_all_hole_pairs()))
             other_player_evaluation = np.zeros(len(self.get_all_hole_pairs()))
+            # print(state.actions_to_children)
             for action in state.actions_to_children: 
                 acting_player_range_current_action = acting_player_range
                 acting_player_range_current_action = self.bayesian_range_update(acting_player_range_current_action, action, state.get_strategy_matrix())
                 other_player_range_current_action = other_player_range
                 state_after_action = PokerStateManager.get_child_state_by_action(state, action) # NOTE: This only gets children that are player states
-                acting_player_evaluation_current_action, other_player_evaluation_current_action = self.subtree_traversal_rollout(state_after_action, other_player_range_current_action, acting_player_range_current_action, end_stage, end_depth)
+                other_player_evaluation_current_action, acting_player_evaluation_current_action = self.subtree_traversal_rollout(state_after_action, other_player_range_current_action, acting_player_range_current_action, end_stage, end_depth)
                 for h in range(len(self.get_all_hole_pairs())): # NOTE: Scaled update of evaluations
                     a = self.action_to_index[action]
                     acting_player_evaluation[h] += state.get_strategy_matrix()[h][a] * acting_player_evaluation_current_action[h]
@@ -164,12 +164,12 @@ class Resolver:
             # print("PLAYER STATE:", acting_player_evaluation, other_player_evaluation)
             for child in state.children:
                 if isinstance(child, ChanceState): # NOTE: IF it is a chance state, then it has not yet been visited
-                    acting_player_evaluation_current_action, other_player_evaluation_current_action = self.subtree_traversal_rollout(child, other_player_range, acting_player_range, end_stage, end_depth)
+                    other_player_evaluation_current_action, acting_player_evaluation_current_action = self.subtree_traversal_rollout(child, other_player_range, acting_player_range, end_stage, end_depth)
                     for h in range(len(self.get_all_hole_pairs())): # NOTE: Scaled update of evaluations
                         a = self.action_to_index["call"] # NOTE: QUICK FIX: ASSUMING CHANCE STATE IS ALWAYS THE RESULT OF A CALL
                         acting_player_evaluation[h] += state.get_strategy_matrix()[h][a] * acting_player_evaluation_current_action[h]
                         other_player_evaluation[h] += state.get_strategy_matrix()[h][a] * other_player_evaluation_current_action[h]
-            print("PLAYER STATE:", state.stage, state.depth)    
+            # print("PLAYER STATE:", state.stage, state.depth)    
         else:
             # NOTE: Assumes that the state is a chance node
             acting_player_evaluation = np.zeros(len(self.get_all_hole_pairs()))
@@ -181,7 +181,7 @@ class Resolver:
                     for h in range(len(self.get_all_hole_pairs())): # NOTE: Scaled update of evaluations
                         acting_player_evaluation[h] += acting_player_evaluation_current_event[h] / len(state.child_events)
                         other_player_evaluation[h] += other_player_evaluation_current_event[h] / len(state.child_events)
-                print("CHANCE STATE:", state.stage)
+                # print("CHANCE STATE:", state.stage)
         state.acting_player_evaluation = acting_player_evaluation
         state.other_player_evaluation = other_player_evaluation
         return acting_player_evaluation, other_player_evaluation
@@ -198,9 +198,10 @@ class Resolver:
                 for action in state.actions_to_children:
                     a = self.action_to_index[action]
                     state_after_action: PlayerState = PokerStateManager.get_child_state_by_action(state, action)
-                    # NOTE: Seems like cumulative regret often negative. Leads to positive regrets becoming 0.
                     cumulative_regret[h][a] += (state_after_action.other_player_evaluation[h] - state.acting_player_evaluation[h])
-                    # NOTE: Quick fix with 0.001 instead of 0
+                    # NOTE: 
+                    # Seems like cumulative regret often negative. Leads to positive regrets becoming 0.
+                    # Quick fix with 0.001 instead of 0
                     positive_regret[h][a] = np.maximum(0.001, cumulative_regret[h][a]) 
             state.cumulative_regret = cumulative_regret
             state.positive_regret = positive_regret
@@ -217,6 +218,9 @@ class Resolver:
             
     # NOTE Based on slides page 63
     def bayesian_range_update(self, acting_player_range, action, strategy_matrix):
+        # NOTE: For some reason actoins is sometimes root....
+        # if action == "root":
+        #     return acting_player_range
         prob_action_given_pair = strategy_matrix[:, self.action_to_index[action]]
         prob_action = np.sum(prob_action_given_pair) / np.sum(strategy_matrix)
         
@@ -234,19 +238,20 @@ class Resolver:
             
             root_node.acting_player_evaluation = acting_player_evaluation
             root_node.other_player_evaluation = other_player_evaluation
-            print(acting_player_evaluation) 
-            print(other_player_evaluation)
+            # print(acting_player_evaluation) 
+            # print(other_player_evaluation)
             strategy_matrix = self.update_strategy(root_node)
             
             # NOTE: QUICK FIX for handlig nan values in strategy!
             
-            strategy_matrix = np.nan_to_num(strategy_matrix, nan=1/3) 
+            # strategy_matrix = np.nan_to_num(strategy_matrix, nan=1/3) 
+            strategy_matrix = self.handle_nan_values(strategy_matrix)
             
             strategy_matrices.append(strategy_matrix)
         
         average_strategy_matrix = np.mean(np.asarray(strategy_matrices), axis=0)
         
-        print(average_strategy_matrix)
+        # print(average_strategy_matrix)
                 
         # NOTE: Pseudocode in assignment returns an action sampled from the strategy AND an updated range for the acting player.
         # I have decided to choose a more hacky apporach. I only return the strategy. And let the resolver agent pick the 
@@ -255,6 +260,25 @@ class Resolver:
         
         return average_strategy_matrix
     
+    def handle_nan_values(self, strategy_matrix: np.ndarray) -> np.ndarray:
+        # TODO: Something is wrong here. Elements in each row still sometimes sum to more than one!
+        for i in range(len(strategy_matrix)):
+            nan_indices = np.argwhere(np.isnan(strategy_matrix[i]))
+            # print("nan_indices",nan_indices)
+            num_nans_in_row = len(nan_indices)
+            # print("num_nans_in_row",num_nans_in_row)
+            if num_nans_in_row > 0:
+                current_sum = np.round(np.nansum(strategy_matrix[i]), decimals=3)
+                # print("current_sum",current_sum)
+                for j in list(nan_indices):
+                    # print("Index",j)
+                    strategy_matrix[i][j] = float((1 - current_sum) / num_nans_in_row)
+                    # print("difference", 1-current_sum)
+                    # print("entry", strategy_matrix[i][j])
+                    
+        return strategy_matrix
+            
+            
     
 if __name__ == "__main__":
     from game_manager import PokerGameManager
@@ -330,7 +354,7 @@ if __name__ == "__main__":
     # Try debugging with less stages!
     end_stage = "river"
     end_depth = 3
-    num_rollouts = 10
+    num_rollouts = 1
     
     strategy = resolver.resolve(root_state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts)
     
