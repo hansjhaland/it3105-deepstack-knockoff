@@ -167,7 +167,7 @@ def generate_training_data_for_stage(stage: str, num_cases: int, use_limited_dec
         "river": 5
     }
 
-    # NOTE: Just picked some values that seems reasonable:
+    # NOTE: Just picked some values that seemed reasonable:
     stage_max_pot = {
         "flop": 40,
         "turn": 60,
@@ -335,9 +335,9 @@ if __name__ == "__main__":
         is_limited_list = [True] # [True, False]
         stage_list = ["river"] # ["flop", "turn", "river"]
         num_cases =  1000 
-        # NOTE: Generating one case takes about 1.5 seconds for LIMITED deck. 
-        # Will only generate data sets for limited decks, 10 000 for each stage. This takes almost 4 hours per stage.
-        # Generating one case for RIVER stage takes about 6 seconds. I have therefore reduced the number of cases for river stage. 
+        # NOTE: Generating one case takes about 1.5 seconds for the flop stage with a LIMITED deck. 
+        # Will only generate data sets for limited decks, 10 000 for fop and turn. This takes almost 4 hours per stage.
+        # Generating one case for RIVER stage takes about 6 seconds. I have therefore reduced the number of cases for river stage to 1000. 
         save_to_file = True
 
         for is_limited in is_limited_list:
