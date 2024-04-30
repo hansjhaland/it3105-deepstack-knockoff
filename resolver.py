@@ -2,17 +2,8 @@ import numpy as np
 from state_manager import PokerStateManager, PlayerState, ChanceState, TerminalState
 from poker_oracle import PokerOracle
 from card_deck import Card, CardDeck
-import copy
 
 class Resolver:
-    # Resolving:
-    # - Produce subtree, either fully or incrementally
-    # - Rollout. Does not need to fully explore the subtree. May want to stop when the stage changes.
-    # - For chance nodes: Each visit can invoke different events (public cards)
-    # - Each player node (or state) houses a strategy matrix, with one row for each possible hole pair and one column for each possible action. 
-    # - Range vectors are sent down to each node, and evaluation vectors are returned upward. 
-    # #TODO: NEED TO ADD PARENT POINTERS TO STATES
-    # - Range of active player is modified as it passes down.
 
     def __init__(self, state_manager: PokerStateManager, poker_oracle: PokerOracle):
         self.state_manager = state_manager
@@ -20,108 +11,47 @@ class Resolver:
         
         self.action_to_index = {"fold": 0, "call": 1, "raise": 2}
 
-    def generate_initial_subtree(self, state, end_stage, end_depth):
+# MARK: Resolve
+
+    def resolve(self, state: PlayerState, acting_player_range: np.ndarray, other_player_range: np.ndarray, end_stage: str, end_depth: int, num_rollouts: int) -> np.ndarray:
+            initial_strategy = self.get_initial_strategy()
+            state.set_strategy_matrix(initial_strategy)
+            root_node = self.generate_initial_subtree(state, end_stage, end_depth)
+                    
+            strategy_matrices = []
+            for _ in range(num_rollouts):
+                acting_player_evaluation, other_player_evaluation = self.subtree_traversal_rollout(state, acting_player_range, other_player_range, end_stage, end_depth)
+                
+                root_node.acting_player_evaluation = acting_player_evaluation
+                root_node.other_player_evaluation = other_player_evaluation
+      
+                strategy_matrix = self.update_strategy(root_node)
+                
+                # NOTE: QUICK FIX for handlig nan values in strategy!
+                
+                # strategy_matrix = np.nan_to_num(strategy_matrix, nan=1/3) 
+                strategy_matrix = self.handle_nan_values(strategy_matrix)
+                
+                strategy_matrices.append(strategy_matrix)
+            
+            average_strategy_matrix = np.mean(np.asarray(strategy_matrices), axis=0)
+                    
+            # NOTE: Pseudocode in assignment returns an action sampled from the strategy AND an updated range for the acting player.
+            # I have decided to choose a more hacky apporach. I only return the strategy. And let the resolver agent pick the 
+            # correct strategy based on its hole cards.
+            # I do not return the range. This means resolving always will start with "default" ranges.
+            
+            return average_strategy_matrix
+
+
+# MARK: Subtree traversal
+
+    def generate_initial_subtree(self, state: PlayerState, end_stage: str, end_depth: int) -> PlayerState:
         self.state_manager.generate_subtree_to_given_stage_and_depth(state, end_stage, end_depth)
         return state
 
 
-    def is_showdown_state(self, state):
-        return state.stage == "showdown"
-
-
-    def is_player_state(self,state):
-        return isinstance(state, PlayerState)
-
-
-    def get_utility_matrix_from_state(self, state: PlayerState):
-        utility_matrix, _ = self.poker_oracle.utility_matrix_generator(state.public_cards)
-        return utility_matrix
-
-
-    def run_neural_network(self, stage, state, acting_player_range, other_player_range):
-        
-        # if stage == "flop":
-        #     pass
-        # if stage == "turn":
-        #     pass
-        # if stage == "river":
-        #     pass
-        
-        acting_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
-        other_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
-        return acting_eval, other_eval # TODO: TEMPORARY VALUES
-
-
-    def get_all_hole_pairs(self):
-        return self.poker_oracle.get_all_hole_pair_keys()
-
-    
-    def get_initial_ranges(self, public_cards: list[Card], acting_player_cards: list[Card]):    
-        # NOTE: Correct number of hole pair keys is 1326 for full deck
-        # and 276 for limited deck. 
-        hole_pair_keys: list[str] = self.poker_oracle.get_all_hole_pair_keys()
-        
-        acting_player_exclude_cards = []
-        for card in public_cards:
-            card_key = str(card.get_rank()) + card.get_suit()
-            acting_player_exclude_cards.append(card_key)
-    
-        acting_player_ranges = np.zeros(len(hole_pair_keys))
-        
-        for i in range(len(acting_player_ranges)):
-            hole_pair_is_possible = True
-            for card in acting_player_exclude_cards:
-                # Public card is part of the current hole pair, thus hole pair is impossible
-                # Check if card string is substring of hole pair string
-                if card in hole_pair_keys[i]:
-                    hole_pair_is_possible = False
-                    break
-            if hole_pair_is_possible:
-                acting_player_ranges[i] = 1
-            
-        num_possible_hands = np.sum(acting_player_ranges)
-        uniform_probability = 1 / num_possible_hands
-        
-        acting_player_ranges = acting_player_ranges * uniform_probability
-        
-        # Acting players cards has to be exluded from other player ranges      
-        other_player_exclude_cards = acting_player_exclude_cards
-        for card in acting_player_cards:
-            card_key = str(card.get_rank()) + card.get_suit()
-            other_player_exclude_cards.append(card_key)
-        
-        other_player_ranges = np.zeros(len(hole_pair_keys))
-        
-        for i in range(len(other_player_ranges)):
-            hole_pair_is_possible = True
-            for card in other_player_exclude_cards:
-                if card in hole_pair_keys[i]:
-                    hole_pair_is_possible = False
-                    break
-            if hole_pair_is_possible:
-                other_player_ranges[i] = 1
-                
-        num_possible_hands = np.sum(other_player_ranges)
-        uniform_probability = 1 / num_possible_hands
-        
-        other_player_ranges = other_player_ranges * uniform_probability
-        
-        return np.asarray(acting_player_ranges), np.asarray(other_player_ranges)
-    
-    
-    def get_initial_strategy(self):
-        hole_pair_keys: list[str] = self.poker_oracle.get_all_hole_pair_keys()
-        actions = list(self.action_to_index.keys())
-        num_actions = len(actions)
-        strategy_matrix = []
-        for _ in range(len(hole_pair_keys)):
-            action_distribution = np.ones(num_actions) * 1/num_actions
-            strategy_matrix.append(action_distribution)
-            
-        return np.asarray(strategy_matrix)
-    
-
-    def subtree_traversal_rollout(self, state: PlayerState|ChanceState|TerminalState, acting_player_range, other_player_range, end_stage, end_depth):
+    def subtree_traversal_rollout(self, state: PlayerState|ChanceState|TerminalState, acting_player_range: np.ndarray, other_player_range: np.ndarray, end_stage: str, end_depth: int) -> tuple[np.ndarray]:
         stage_dict = {"pre-flop": 0,
                 "flop": 1,
                 "turn": 2,
@@ -185,9 +115,30 @@ class Resolver:
         state.acting_player_evaluation = acting_player_evaluation
         state.other_player_evaluation = other_player_evaluation
         return acting_player_evaluation, other_player_evaluation
-                
-                
-    def update_strategy(self, state: PlayerState):
+
+
+# MARK: Evaulations and updates
+
+    def get_utility_matrix_from_state(self, state: PlayerState) -> np.ndarray:
+        utility_matrix, _ = self.poker_oracle.utility_matrix_generator(state.public_cards)
+        return utility_matrix
+
+
+    def run_neural_network(self, stage: str, state: PlayerState, acting_player_range: np.ndarray, other_player_range: np.ndarray) -> tuple[np.ndarray]:
+        
+        # if stage == "flop":
+        #     pass
+        # if stage == "turn":
+        #     pass
+        # if stage == "river":
+        #     pass
+        
+        acting_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
+        other_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
+        return acting_eval, other_eval # TODO: TEMPORARY VALUES
+
+
+    def update_strategy(self, state: PlayerState) -> np.ndarray:
         for child in state.children:
             if self.is_player_state(child):
                 self.update_strategy(child)
@@ -216,8 +167,9 @@ class Resolver:
             
         return strategy_matrix
             
+            
     # NOTE Based on slides page 63
-    def bayesian_range_update(self, acting_player_range, action, strategy_matrix):
+    def bayesian_range_update(self, acting_player_range, action, strategy_matrix) -> np.ndarray:
         # NOTE: For some reason actoins is sometimes root....
         # if action == "root":
         #     return acting_player_range
@@ -227,39 +179,85 @@ class Resolver:
         return acting_player_range * (prob_action_given_pair/prob_action)
 
 
-    def resolve(self, state: PlayerState, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts):
-        initial_strategy = self.get_initial_strategy()
-        state.set_strategy_matrix(initial_strategy)
-        root_node = self.generate_initial_subtree(state, end_stage, end_depth)
-                
-        strategy_matrices = []
-        for _ in range(num_rollouts):
-            acting_player_evaluation, other_player_evaluation = self.subtree_traversal_rollout(state, acting_player_range, other_player_range, end_stage, end_depth)
-            
-            root_node.acting_player_evaluation = acting_player_evaluation
-            root_node.other_player_evaluation = other_player_evaluation
-            # print(acting_player_evaluation) 
-            # print(other_player_evaluation)
-            strategy_matrix = self.update_strategy(root_node)
-            
-            # NOTE: QUICK FIX for handlig nan values in strategy!
-            
-            # strategy_matrix = np.nan_to_num(strategy_matrix, nan=1/3) 
-            strategy_matrix = self.handle_nan_values(strategy_matrix)
-            
-            strategy_matrices.append(strategy_matrix)
-        
-        average_strategy_matrix = np.mean(np.asarray(strategy_matrices), axis=0)
-        
-        # print(average_strategy_matrix)
-                
-        # NOTE: Pseudocode in assignment returns an action sampled from the strategy AND an updated range for the acting player.
-        # I have decided to choose a more hacky apporach. I only return the strategy. And let the resolver agent pick the 
-        # correct strategy based on its hole cards.
-        # I do not return the range. This means resolving always will start with "default" ranges.
-        
-        return average_strategy_matrix
+# MARK: Other helper function
+
+    def get_all_hole_pairs(self) -> list[str]:
+        return self.poker_oracle.get_all_hole_pair_keys()
+
     
+    def get_initial_ranges(self, public_cards: list[Card], acting_player_cards: list[Card]) -> tuple[np.ndarray]:    
+        # NOTE: Correct number of hole pair keys is 1326 for full deck
+        # and 276 for limited deck. 
+        hole_pair_keys: list[str] = self.poker_oracle.get_all_hole_pair_keys()
+        
+        acting_player_exclude_cards = []
+        for card in public_cards:
+            card_key = str(card.get_rank()) + card.get_suit()
+            acting_player_exclude_cards.append(card_key)
+    
+        acting_player_ranges = np.zeros(len(hole_pair_keys))
+        
+        for i in range(len(acting_player_ranges)):
+            hole_pair_is_possible = True
+            for card in acting_player_exclude_cards:
+                # Public card is part of the current hole pair, thus hole pair is impossible
+                # Check if card string is substring of hole pair string
+                if card in hole_pair_keys[i]:
+                    hole_pair_is_possible = False
+                    break
+            if hole_pair_is_possible:
+                acting_player_ranges[i] = 1
+            
+        num_possible_hands = np.sum(acting_player_ranges)
+        uniform_probability = 1 / num_possible_hands
+        
+        acting_player_ranges = acting_player_ranges * uniform_probability
+        
+        # Acting players cards has to be exluded from other player ranges      
+        other_player_exclude_cards = acting_player_exclude_cards
+        for card in acting_player_cards:
+            card_key = str(card.get_rank()) + card.get_suit()
+            other_player_exclude_cards.append(card_key)
+        
+        other_player_ranges = np.zeros(len(hole_pair_keys))
+        
+        for i in range(len(other_player_ranges)):
+            hole_pair_is_possible = True
+            for card in other_player_exclude_cards:
+                if card in hole_pair_keys[i]:
+                    hole_pair_is_possible = False
+                    break
+            if hole_pair_is_possible:
+                other_player_ranges[i] = 1
+                
+        num_possible_hands = np.sum(other_player_ranges)
+        uniform_probability = 1 / num_possible_hands
+        
+        other_player_ranges = other_player_ranges * uniform_probability
+        
+        return np.asarray(acting_player_ranges), np.asarray(other_player_ranges)
+    
+    
+    def get_initial_strategy(self) -> np.ndarray:
+        hole_pair_keys: list[str] = self.poker_oracle.get_all_hole_pair_keys()
+        actions = list(self.action_to_index.keys())
+        num_actions = len(actions)
+        strategy_matrix = []
+        for _ in range(len(hole_pair_keys)):
+            action_distribution = np.ones(num_actions) * 1/num_actions
+            strategy_matrix.append(action_distribution)
+            
+        return np.asarray(strategy_matrix)
+    
+
+    def is_showdown_state(self, state: PlayerState) -> bool:
+        return state.stage == "showdown"
+
+
+    def is_player_state(self, state: PlayerState | ChanceState | TerminalState) -> bool:
+        return isinstance(state, PlayerState)
+                
+                
     def handle_nan_values(self, strategy_matrix: np.ndarray) -> np.ndarray:
         # TODO: Something is wrong here. Elements in each row still sometimes sum to more than one!
         for i in range(len(strategy_matrix)):
@@ -279,7 +277,7 @@ class Resolver:
         return strategy_matrix
             
             
-    
+# MARK: Main  
 if __name__ == "__main__":
     from game_manager import PokerGameManager
     
@@ -296,31 +294,6 @@ if __name__ == "__main__":
     
     card_deck = CardDeck(use_limited_deck)
     card_deck.shuffle()
-    
-    # public_cards = card_deck.deal(5)
-    
-    # acting_player_hole_cards = card_deck.deal(2)
-    
-    # acting_player_ranges, other_player_ranges = resolver.get_initial_ranges(public_cards,
-    #                                                                         acting_player_hole_cards)
-    # print(acting_player_ranges)
-    # print()
-    # print(other_player_ranges)
-    
-    # strategy_matrix = resolver.get_initial_strategy()
-    
-    # print(strategy_matrix)
-    
-    
-    # a = np.asarray([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-    # b = np.asarray([[9, 8, 7], [6, 5, 4], [3, 2, 1]])
-    # matrices = np.asarray([a, b])    
-    
-    # print("None:", np.mean(matrices))
-    # print("Axis 0:", np.mean(matrices, axis=0)) # NOTE: This is what I want for strategy matrices
-    # print("Axis 1:", np.mean(matrices, axis=1))
-    # print("Axis 2:", np.mean(matrices, axis=2))
-    # print("Axis 0,1:", np.mean(matrices, axis=(0,1)))
     
     game_manager.add_poker_agent("rollout", 100, "Alice")
     game_manager.add_poker_agent("rollout", 100, "Bob")
@@ -353,7 +326,7 @@ if __name__ == "__main__":
     # NOTE: RUN from PRE-FLOP to SHOWDOWN takes SEVERAL HOURS. Still ends with nan values.
     # Try debugging with less stages!
     end_stage = "river"
-    end_depth = 3
+    end_depth = 1
     num_rollouts = 1
     
     strategy = resolver.resolve(root_state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts)
