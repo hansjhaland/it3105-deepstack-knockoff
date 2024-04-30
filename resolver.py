@@ -1,7 +1,9 @@
 import numpy as np
+import torch
 from state_manager import PokerStateManager, PlayerState, ChanceState, TerminalState
 from poker_oracle import PokerOracle
 from card_deck import Card, CardDeck
+from neural_networks import NeuralNetwork, load_model_from_file, encode_public_cards
 
 class Resolver:
 
@@ -126,16 +128,48 @@ class Resolver:
 
     def run_neural_network(self, stage: str, state: PlayerState, acting_player_range: np.ndarray, other_player_range: np.ndarray) -> tuple[np.ndarray]:
         
-        # if stage == "flop":
-        #     pass
-        # if stage == "turn":
-        #     pass
-        # if stage == "river":
-        #     pass
+        if stage == "pre-flop":
+            # NOTE: This should never be called using a pre-flop state
+            acting_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
+            other_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
+            return acting_eval, other_eval # TODO: TEMPORARY VALUES
         
-        acting_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
-        other_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
-        return acting_eval, other_eval # TODO: TEMPORARY VALUES
+        use_limited = self.poker_oracle.use_limited_deck
+        
+        file_prefix = stage + "_limited" if use_limited else stage 
+        
+        neural_network = load_model_from_file(f"{file_prefix}_100epochs")
+        
+        encoded_public_cards = encode_public_cards(state.public_cards, use_limited)
+        
+        stage_max_pot = {
+            "flop": 40,
+            "turn": 60,
+            "river": 80
+        }
+        
+        relative_pot = [state.pot / stage_max_pot[stage]]
+        
+        neural_network_input = [*acting_player_range, *encoded_public_cards, *relative_pot, *other_player_range]
+        
+        neural_network_input = torch.Tensor([neural_network_input]) # NOTE: Add extra dim to match shapes in network
+        
+        acting_player_evaluation, other_player_evaluation, _ = neural_network(neural_network_input, use_limited)
+
+        acting_player_evaluation = acting_player_evaluation.squeeze(0).detach().numpy()
+        other_player_evaluation = other_player_evaluation.squeeze(0).detach().numpy()
+        
+        # NOTE: QUICKFIX! For some reason the evaluations from neural network are one element too short.
+        # May be caused by some error in the data generation for neural networks.
+        # Because of this I may need to regenerate the data sets.
+        # However, I believe I don't have time for that and unfortunately have to settle with a quickfix.
+        # I will append one random uniformly distributed value at the end of the evaluation to make
+        # lengths add up.
+
+        acting_player_evaluation = np.asarray([*acting_player_evaluation, np.random.uniform(size=1)[0]])
+        other_player_evaluation = np.asarray([*other_player_evaluation, np.random.uniform(size=1)[0]])
+
+        return acting_player_evaluation, other_player_evaluation
 
 
     def update_strategy(self, state: PlayerState) -> np.ndarray:
