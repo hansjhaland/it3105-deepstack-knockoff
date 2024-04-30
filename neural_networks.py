@@ -297,26 +297,35 @@ if __name__ == "__main__":
         river_network = NeuralNetwork(river_inputs.shape[1], river_p1_tragets.shape[1])
         
         # Train and save networks. Save plots of training loss.
-        num_epochs = 100 # NOTE: Seems to converge around 100 epochs
+        num_epochs = 100 # NOTE: Seems to converge around 100 epochs.
         learning_rate = 0.001
         is_limited = True 
         
         print("Training flop network")
         flop_network, flop_training_loss = train_model(flop_network, flop_inputs, flop_p1_tragets, flop_p2_targets, num_epochs, learning_rate, is_limited)
-        save_loss_plot(flop_training_loss, f"flop_training_{num_epochs}epochs")
-        save_model_to_file(flop_network, f"flop_{num_epochs}epochs")
+        file_name = "flop_"
+        file_name += "limited_" if is_limited else ""
+        file_name += f"{num_epochs}epochs"
+        save_loss_plot(flop_training_loss, file_name)
+        save_model_to_file(flop_network, file_name)
         print()
         
         print("Training turn network")
         turn_network, turn_training_loss = train_model(turn_network, turn_inputs, turn_p1_tragets, turn_p2_targets, num_epochs, learning_rate, is_limited)
-        save_loss_plot(turn_training_loss, f"turn_training_{num_epochs}epochs")
-        save_model_to_file(turn_network, f"turn_{num_epochs}epochs")
+        file_name = "turn_"
+        file_name += "limited_" if is_limited else ""
+        file_name += f"{num_epochs}epochs"
+        save_loss_plot(turn_training_loss, file_name)
+        save_model_to_file(turn_network, file_name)
         print()
         
         print("Training river network")
         river_network, river_training_loss = train_model(river_network, river_inputs, river_p1_tragets, river_p2_targets, num_epochs, learning_rate, is_limited)
-        save_loss_plot(river_training_loss, f"river_training_{num_epochs}epochs")
-        save_model_to_file(river_network, f"river_{num_epochs}epochs")
+        file_name = "river_"
+        file_name += "limited_" if is_limited else ""
+        file_name += f"{num_epochs}epochs"
+        save_loss_plot(river_training_loss, file_name)
+        save_model_to_file(river_network, file_name)
         print()
     
     
