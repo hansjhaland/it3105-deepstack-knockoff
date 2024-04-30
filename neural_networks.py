@@ -1,10 +1,114 @@
 from card_deck import CardDeck, Card
 from poker_oracle import PokerOracle
 import numpy as np
+import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data.dataloader import DataLoader
+
+import time
 
 # MARK: MODEL
+class NeuralNetwork(nn.Module):
+    
+    def __init__(self, input_size: int, output_size: int):
+        super().__init__()
+        
+        self.fully_connected = nn.Sequential(
+            nn.Linear(input_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU()
+        )
+        self.p1_values = nn.Linear(128, output_size)
+        self.p2_values = nn.Linear(128, output_size)
+        
+    def forward(self, x, is_limited):
+        p1_range_indices = (0, 275) if is_limited else (0, 1325)
+        p2_range_indices = (302, 577) if is_limited else (1380, 2705)
+        
+        p1_ranges = x[:, p1_range_indices[0]:p1_range_indices[1]]
+        p2_ranges = x[:, p2_range_indices[0]:p2_range_indices[1]]
+        
+        x = self.fully_connected(x)
+        
+        p1_values = self.p1_values(x)
+        p2_values = self.p2_values(x)
+        
+        # print(p1_ranges.shape, p1_values.shape)
+        
+        p1_dot = torch.tensordot(p1_ranges, p1_values, dims=2)
+        p2_dot = torch.tensordot(p2_ranges, p2_values, dims=2)
+        
+        zero_sums = p1_dot - p2_dot
+        
+        return p1_values, p2_values, zero_sums
+        
 
 # MARK: TRAINING
+
+class CustomLossFunction(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, p1_values, p2_values, zero_sums, p1_targets, p2_targets):
+        p1_errors = (p1_values - p1_targets)**2
+        p2_errors = (p2_values - p2_targets)**2
+        zero_sums_error = (zero_sums)**2
+        
+        total_loss: torch.Tensor = p1_errors + p2_errors + zero_sums_error
+        
+        return total_loss.mean()
+
+
+def train_model(model: nn.Module, inputs: np.ndarray, p1_targets: np.ndarray, p2_targets: np.ndarray, num_epochs: int, learning_rate: float, is_limited: bool): 
+
+    inputs = torch.Tensor(inputs)
+    p1_targets = torch.Tensor(p1_targets)
+    p2_targets = torch.Tensor(p2_targets)
+
+    optimizer = optim.Adam(model.parameters(), lr = learning_rate)
+    custom_loss = CustomLossFunction()
+    
+    loss_list = []
+    
+    for epoch in range(num_epochs):
+        optimizer.zero_grad()
+        p1_values, p2_values, zero_sums = model(inputs, is_limited)
+        loss = custom_loss(p1_values, p2_values, zero_sums, p1_targets, p2_targets)
+        loss.backward()
+        optimizer.step()
+        
+        loss_list.append(loss.item())
+        print(f"Epoch [{epoch+1}/{num_epochs}]: {loss.item()} ")        
+
+    return model, np.asarray(loss_list)
+
+
+def save_model_to_file(model: nn.Module, file_name: str):
+    path = "./models/" + file_name + ".pt"
+    torch.save(model, path)
+    print(f"Model saved to {path}")
+
+
+def load_model_from_file(file_name: str) -> nn.Module:
+    path = "./models/" + file_name + ".pt"
+    model: nn.Module = torch.load(path)
+    model.eval()
+    return model
+
+
+def save_loss_plot(loss_list: np.ndarray, file_name: str):
+    plt.plot(loss_list)
+    path = "./loss/" + file_name
+    plt.savefig(path)
+    plt.close()
+    print(f"Plot saved to {path}")
+
 
 # MARK: DATA SET GENERATION
 
@@ -41,7 +145,7 @@ def generate_random_ranges(public_cards: list[Card], poker_oracle: PokerOracle):
     return player1_range, player2_range
     
 
-def encode_public_cards(public_cards, use_limited_deck):       
+def encode_public_cards(public_cards: list[Card], use_limited_deck: bool):       
     public_cards_strings: list[str] = [str(card) for card in public_cards]
     
     card_deck = CardDeck(use_limited_deck)
@@ -56,7 +160,7 @@ def encode_public_cards(public_cards, use_limited_deck):
     
     
 # NOTE: Based on "Cheap method" from slides
-def generate_training_data_for_stage(stage, num_cases, use_limited_deck, save_to_file):
+def generate_training_data_for_stage(stage: str, num_cases: int, use_limited_deck: bool, save_to_file: bool):
     stage_to_num_public_cards = {
         "flop": 3,
         "turn": 4,
@@ -116,6 +220,7 @@ def generate_training_data_for_stage(stage, num_cases, use_limited_deck, save_to
         else:    
             save_path = f"./training_data/{stage}_{num_cases}"    
         np.save(save_path, training_data) 
+        print(f"Saved to file {save_path}")
         
     return training_data
 
@@ -169,17 +274,70 @@ def load_data_set_from_file(file_name: str):
     # print(inputs.shape, p1_targets.shape, p2_targets.shape)
     
     return inputs, p1_targets, p2_targets
-    
-is_limited_list = [True, False]
-stage_list = ["flop", "turn", "river"]
-num_cases = 50000
-save_to_file = True
 
-for is_limited in is_limited_list:
-    for stage in stage_list:
-        if is_limited:
-            print(f"Generating {num_cases} for {stage} stae with limited deck")
-        else:
-            print(f"Generating {num_cases} for {stage} stae with regular deck")
-        generate_training_data_for_stage(stage, num_cases, is_limited, save_to_file)
+# MARK: MAIN
+if __name__ == "__main__":
+    
+# ================ TRAIN MODELS ================
+    train_models = False
+    if train_models:
+        # Get data sets
+        flop_inputs, flop_p1_tragets, flop_p2_targets = load_data_set_from_file("limited_flop_10000")
+        turn_inputs, turn_p1_tragets, turn_p2_targets = load_data_set_from_file("limited_turn_10000")
+        river_inputs, river_p1_tragets, river_p2_targets = load_data_set_from_file("limited_river_1000")
+        
+        print("Flop:", flop_inputs.shape, flop_p1_tragets.shape, flop_p2_targets.shape)
+        print("turn:", turn_inputs.shape, turn_p1_tragets.shape, turn_p2_targets.shape)
+        print("River:", river_inputs.shape, river_p1_tragets.shape, river_p2_targets.shape)
+        print()
+        
+        # Get model instances
+        flop_network = NeuralNetwork(flop_inputs.shape[1], flop_p1_tragets.shape[1])
+        turn_network = NeuralNetwork(turn_inputs.shape[1], turn_p1_tragets.shape[1])
+        river_network = NeuralNetwork(river_inputs.shape[1], river_p1_tragets.shape[1])
+        
+        # Train and save networks. Save plots of training loss.
+        num_epochs = 100 # NOTE: Seems to converge around 100 epochs
+        learning_rate = 0.001
+        is_limited = True 
+        
+        print("Training flop network")
+        flop_network, flop_training_loss = train_model(flop_network, flop_inputs, flop_p1_tragets, flop_p2_targets, num_epochs, learning_rate, is_limited)
+        save_loss_plot(flop_training_loss, f"flop_training_{num_epochs}epochs")
+        save_model_to_file(flop_network, f"flop_{num_epochs}epochs")
+        print()
+        
+        print("Training turn network")
+        turn_network, turn_training_loss = train_model(turn_network, turn_inputs, turn_p1_tragets, turn_p2_targets, num_epochs, learning_rate, is_limited)
+        save_loss_plot(turn_training_loss, f"turn_training_{num_epochs}epochs")
+        save_model_to_file(turn_network, f"turn_{num_epochs}epochs")
+        print()
+        
+        print("Training river network")
+        river_network, river_training_loss = train_model(river_network, river_inputs, river_p1_tragets, river_p2_targets, num_epochs, learning_rate, is_limited)
+        save_loss_plot(river_training_loss, f"river_training_{num_epochs}epochs")
+        save_model_to_file(river_network, f"river_{num_epochs}epochs")
+        print()
+    
+    
+# ================ GENERATE DATA ================
+    generate_data = False
+    if generate_data:
+        is_limited_list = [True] # [True, False]
+        stage_list = ["river"] # ["flop", "turn", "river"]
+        num_cases =  1000 
+        # NOTE: Generating one case takes about 1.5 seconds for LIMITED deck. 
+        # Will only generate data sets for limited decks, 10 000 for each stage. This takes almost 4 hours per stage.
+        # Generating one case for RIVER stage takes about 6 seconds. I have therefore reduced the number of cases for river stage. 
+        save_to_file = True
+
+        for is_limited in is_limited_list:
+            for stage in stage_list:
+                start = time.time()
+                if is_limited:
+                    print(f"Generating {num_cases} cases for {stage} stage with limited deck")
+                else:
+                    print(f"Generating {num_cases} cases for {stage} stage with regular deck")
+                generate_training_data_for_stage(stage, num_cases, is_limited, save_to_file)
+                print(f"Finished in {time.time() - start:.2f} seconds.")
 
