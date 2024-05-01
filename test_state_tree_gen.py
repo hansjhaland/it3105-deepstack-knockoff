@@ -90,15 +90,15 @@ state_manager.generate_subtree_to_given_stage_and_depth(river_state,
 
 
 # MARK: Print "trees"
-print("Pre-flop")
+print("Pre-flop -> Flop")
 PokerStateManager.iterative_print_subtree(pre_flop_state)
 print()
-print("Flop")
+print("Flop -> Turn")
 PokerStateManager.iterative_print_subtree(flop_state)
 print()
-print("Turn")
+print("Turn -> River")
 PokerStateManager.iterative_print_subtree(turn_state)
 print()
-print("River")
+print("River -> Showdown")
 PokerStateManager.iterative_print_subtree(river_state)
 print()
