@@ -233,10 +233,8 @@ class PokerOracle:
             random_hole_pair = random.choice(hole_pair_types[pair_types[i]])
             for j in range(max_num_opponents):
                 num_opponents = j + 1
-                print(f"Beginning rollouts for {num_opponents} opponents for type {i+1}/{len(hole_pair_types)}") 
                 winning_probability = self.rollout_hole_pair_evaluator(random_hole_pair, None, num_opponents, num_rollouts)
                 cheat_sheet[i].append(winning_probability)
-                print(f"Finished rollouts for {num_opponents} opponents")
         
         return np.asarray(cheat_sheet)
     
