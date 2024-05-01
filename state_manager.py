@@ -314,7 +314,7 @@ class PokerStateManager:
         return "PLAYER"
     
  
-# MARK: Stateic methods
+# MARK: Static methods
  
     @staticmethod
     def get_child_state_by_action(state: PlayerState, action: str) -> PlayerState | ChanceState | TerminalState | None:
@@ -387,6 +387,21 @@ class PokerStateManager:
             bet_amount = raise_amount
         return  bet_amount, action, num_remaining_raises, current_hand_players
 
+    
+    @staticmethod 
+    def iterative_print_subtree(state: PlayerState):
+        nodes = state.children
+        while not nodes == []:
+            child = nodes.pop()
+            if isinstance(child, PlayerState):
+                print("PLAYER", child.origin_action, child.depth, child.stage)
+            if isinstance(child, TerminalState):
+                print("TERMINAL", child.origin_action, child.depth, child.stage)
+            if isinstance(child, ChanceState):
+                print("CHANCE", child.event, child.player_state.depth, child.stage, child.player_state.stage)
+            if not child.children == []:
+                for grand_child in child.children:
+                    nodes.append(grand_child)
      
   
 # MARK: Main        
@@ -423,48 +438,7 @@ if __name__ == "__main__":
                                                             end_stage="showdown", 
                                                             end_depth=16)
     
-    def print_subtree(state, depth = 0):
-        for child in state.children:
-            if isinstance(child, PlayerState):
-                print("PLAYER", child.origin_action, child.depth, child.stage)
-                # print("PLAYER", child.origin_action, depth, child.stage)
-            if isinstance(child, TerminalState):
-                print("TERMINAL", child.origin_action, child.depth, child.stage)
-                # print("TERMINAL", child.origin_action, depth, child.stage)
-            if isinstance(child, ChanceState):
-                print("CHANCE", child.event, child.player_state.depth, child.stage, child.player_state.stage)
-                # print("CHANCE", child.event, depth, child.stage, child.player_state.stage)
-            print_subtree(child, depth + 1)
-    
-    # print_subtree(root_state)
-    
-    # print("========================================================\n")
-    def iterative_print_subtree(state: PlayerState):
-        nodes = state.children
-        while not nodes == []:
-            child = nodes.pop()
-            if isinstance(child, PlayerState):
-                print("PLAYER", child.origin_action, child.depth, child.stage)
-            if isinstance(child, TerminalState):
-                print("TERMINAL", child.origin_action, child.depth, child.stage)
-            if isinstance(child, ChanceState):
-                print("CHANCE", child.event, child.player_state.depth, child.stage, child.player_state.stage)
-            if not child.children == []:
-                for grand_child in child.children:
-                    nodes.append(grand_child)
                     
-    iterative_print_subtree(root_state)
-    
-    # def get_all_children(state, depth=0):
-    #     for child in state.children:
-    #         # if depth == 5:
-    #         #     return
-    #         if isinstance(child, PlayerState):
-    #             print(child.origin_action, depth)
-    #         if isinstance(child, ChanceState):
-    #             print(child.event, depth)
-    #         state_manager.generate_all_child_states(child)
-    #         get_all_children(child, depth + 1)
-    
-    # get_all_children(root_state)
+    PokerStateManager.iterative_print_subtree(root_state)
+
     
