@@ -398,7 +398,7 @@ class PokerStateManager:
             if isinstance(child, TerminalState):
                 print("TERMINAL", child.origin_action, child.depth, child.stage)
             if isinstance(child, ChanceState):
-                print("CHANCE", child.event, child.player_state.depth, child.stage, child.player_state.stage)
+                print("CHANCE", *child.event, child.player_state.depth, child.stage, child.player_state.stage)
             if not child.children == []:
                 for grand_child in child.children:
                     nodes.append(grand_child)
