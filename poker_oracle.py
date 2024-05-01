@@ -21,12 +21,14 @@ class PokerOracle:
         
         self.use_limited_deck = use_limited_deck
         self.hole_pair_keys = None
+
+# MARK: Hand classification
     
     # NOTE: Easiest to evaluate set of 5 cards.
     # Sets of 6 or 7 cards will be split into all possible sets 
     # of 5 cards. Each of these are evaluated and the best
     # classification is returned.
-    def hand_classifier(self, card_set: list[Card]) -> tuple[str, int]: 
+    def hand_classifier(self, card_set: list[Card]) -> tuple[str, int, list[Card]]: 
         num_cards = len(card_set)
         classification = ""
         ranking = 100 # Arbitrary initial value. Lower hand ranking is better
@@ -43,7 +45,7 @@ class PokerOracle:
         else:
             if self.is_flush(card_set):
                 if self.is_straight(card_set):
-                    if self.get_highest_card(card_set).get_rank() == 14: # TODO: Make this a constant? Or use something from the card_deck class?
+                    if self.get_highest_card(card_set).get_rank() == 14:
                         hand = "royal_flush"
                         return hand, self.hand_rankings[hand], card_set 
                     hand = "straight_flush"
@@ -73,11 +75,13 @@ class PokerOracle:
             # Hand is high card if not any of the above
             hand = "high_card"
             return hand, self.hand_rankings[hand], card_set
+         
                  
     def get_all_five_card_subsets(self, card_set: list[Card]) -> tuple[list[Card]]: 
         # Returns all possible five card subsets of a given
         # 6 or 7 card set.
         return list(combinations(card_set, 5))
+            
             
     def is_flush(self, card_set: list[Card]) -> bool:
         # Assumes 5 cards in card set
@@ -85,7 +89,7 @@ class PokerOracle:
         num_different_suits = len(set(suits))
         return num_different_suits == 1
     
-    # TODO: Ace is only considered as 14, but should technically
+    # NOTE: Ace is only considered as 14, but should technically
     # also be considered a 1 when checking for straight!!!
     def is_straight(self, card_set: list[Card]) -> bool:
         rank_set = [card.get_rank() for card in card_set]
@@ -97,21 +101,23 @@ class PokerOracle:
                 return False
         return True
         
+        
     def get_highest_card(self, card_set: list[Card]) -> Card:
         sorted_card_set = sorted(card_set, key=lambda card: card.get_rank())
         highest_card = sorted_card_set[-1]
         return highest_card
     
+    
     def count_ranks(self, card_set: list[Card]) -> list[int]:
         # Possible card rank ranges from 2 - 14.
         # Count number of ocurrences of each rank.
-        # Similar to procedure in Counting Sort
         rank_count = [0] * 14
         for card in card_set:
             card_rank = card.get_rank()
             rank_index = card_rank - 1
             rank_count[rank_index] += 1
         return rank_count
+    
     
     def get_paired_ranks(self, card_set: list[Card]) -> int:
             num_each_rank = self.count_ranks(card_set)
@@ -122,19 +128,24 @@ class PokerOracle:
                     paired_ranks.append(paired_rank)
             return paired_ranks
         
+        
     def is_full_house(self, card_set: list[Card]) -> bool:
         num_each_rank = self.count_ranks(card_set)
         return 2 in num_each_rank and 3 in num_each_rank
     
+    
     def is_four_of_a_kind(self, card_set: list[Card]) -> bool:
         num_each_rank = self.count_ranks(card_set)
         return 4 in num_each_rank
+            
             
     def is_three_of_a_kind(self, card_set: list[Card]) -> bool:
         # NOTE: Assumes full house is checked before this
         num_each_rank = self.count_ranks(card_set)
         return 3 in num_each_rank
     
+    
+ # MARK: Hole pair evaluation  
     def evaluate_showdown(self, public_cards: list[Card], p1_hole_cards: list[Card], p2_hole_cards: list[Card]) -> int:
         # NOTE: For hand rankings, lower rank is better
         p1_win = 1
@@ -200,8 +211,9 @@ class PokerOracle:
         hole_pair_win_probability = num_rollout_wins / rollout_count
         return hole_pair_win_probability
     
-    
-    def poker_cheat_sheet_generator(self, max_num_opponents: int, num_rollouts: int) -> list[list[float]]:
+
+# MARK: Cheat sheet
+    def poker_cheat_sheet_generator(self, max_num_opponents: int, num_rollouts: int) -> np.ndarray:
         hole_pair_types = self.get_all_hole_pairs_by_type()     
         cheat_sheet: list[list[float]] = []
         pair_types = list(hole_pair_types.keys())
@@ -218,7 +230,7 @@ class PokerOracle:
         return np.asarray(cheat_sheet)
     
     
-    def generate_and_save_cheat_sheet(self, max_num_opponents: int, num_rollouts: int):
+    def generate_and_save_cheat_sheet(self, max_num_opponents: int, num_rollouts: int) -> np.ndarray:
         cheat_sheet = self.poker_cheat_sheet_generator(max_num_opponents, num_rollouts)
         file_name = ""
         if self.use_limited_deck:
@@ -229,7 +241,7 @@ class PokerOracle:
         return np.asarray(cheat_sheet)
         
         
-    def load_cheat_sheet(self, max_num_opponents: int, num_rollouts: int) -> list[list[float]]:
+    def load_cheat_sheet(self, max_num_opponents: int, num_rollouts: int) -> np.ndarray:
         file_name = ""
         if self.use_limited_deck:
             file_name += "limited_"
@@ -243,7 +255,7 @@ class PokerOracle:
         
     
     def get_cheat_sheet_hole_pair_probabilitiy(self, hole_pair: list[Card], num_opponents: int, 
-                                               cheat_sheet: dict[list[float]]) -> float:
+                                               cheat_sheet: np.ndarray) -> float:
         all_hole_pair_types = list(self.get_all_hole_pairs_by_type().keys())
         hole_pair_type = self.get_hole_pair_type(hole_pair)
         hole_pair_type_index = all_hole_pair_types.index(hole_pair_type)
@@ -251,7 +263,52 @@ class PokerOracle:
         win_probability = cheat_sheet[hole_pair_type_index][num_opponents_index]
         return win_probability
         
+
+# MARK: Utility matrix
+
+    def utility_matrix_generator(self, public_cards: list[Card]) -> tuple[np.ndarray, list[int]]:
+            utility_matrix: list[list[int]] = []
+            all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
+            hole_pair_types = list(all_hole_pairs_by_type.keys()) 
+            all_hole_pairs = []
+            hole_pair_keys = []
+            for key in hole_pair_types:
+                hole_pairs_one_type = all_hole_pairs_by_type[key]
+                for i in range(len(hole_pairs_one_type)):
+                    hole_pair = hole_pairs_one_type[i]
+                    # NOTE: Want to avoid having duplicate entries because of the order of the cards in the hole card list.
+                    hole_pair_key = self.get_hole_pair_key(hole_pair)
+                    if not hole_pair_key in hole_pair_keys:
+                        all_hole_pairs.append(hole_pair)
+                        hole_pair_keys.append(hole_pair_key)
+            for index_1, hole_pair_1 in enumerate(all_hole_pairs):
+                utility_matrix.append([])
+                for _, hole_pair_2 in enumerate(all_hole_pairs):
+                    if hole_pair_1 == hole_pair_2:
+                        utility_matrix[index_1].append(0)
+                    elif self.is_card_overlap(hole_pair_1, hole_pair_2, public_cards):
+                        utility_matrix[index_1].append(0)
+                    else:
+                        # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
+                        winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
+                        utility_matrix[index_1].append(winner)
+                        
+            self.hole_pair_keys = hole_pair_keys
+            
+            return np.asarray(utility_matrix), hole_pair_keys
         
+        
+    def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
+            # NOTE: Allows for getting the entry in the utility matrix directly from the hole cards
+            key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
+            key_hole_pair_2 = self.get_hole_pair_key(hole_pair_2)
+            index_hole_pair_1 = self.hole_pair_keys.index(key_hole_pair_1)
+            index_hole_pair_2 = self.hole_pair_keys.index(key_hole_pair_2)
+            return index_hole_pair_1, index_hole_pair_2
+
+        
+# MARK: Helper methods   
+
     def get_hole_pair_type(self, hole_pair: list[Card]) -> str:
         card1 = hole_pair[0]
         card2 = hole_pair[1]
@@ -291,39 +348,7 @@ class PokerOracle:
         return pair_key
         
         
-    def utility_matrix_generator(self, public_cards: list[Card]) -> tuple[list[list[int]], list[int]]:
-        utility_matrix: list[list[int]] = []
-        all_hole_pairs_by_type: dict[list[Card]] = self.get_all_hole_pairs_by_type()
-        hole_pair_types = list(all_hole_pairs_by_type.keys()) 
-        all_hole_pairs = []
-        hole_pair_keys = []
-        for key in hole_pair_types:
-            hole_pairs_one_type = all_hole_pairs_by_type[key]
-            for i in range(len(hole_pairs_one_type)):
-                hole_pair = hole_pairs_one_type[i]
-                hole_pair_key = self.get_hole_pair_key(hole_pair)
-                # NOTE: Want to avoid having duplicate entries because of the order of the cards in the hole card list.
-                # TODO: I think this is necessary but i may be wrong. Should probably ask about it.
-                if not hole_pair_key in hole_pair_keys:
-                    all_hole_pairs.append(hole_pair)
-                    hole_pair_keys.append(hole_pair_key)
-        for index_1, hole_pair_1 in enumerate(all_hole_pairs):
-            utility_matrix.append([])
-            for _, hole_pair_2 in enumerate(all_hole_pairs):
-                if hole_pair_1 == hole_pair_2:
-                    utility_matrix[index_1].append(0)
-                elif self.is_card_overlap(hole_pair_1, hole_pair_2, public_cards):
-                    utility_matrix[index_1].append(0)
-                else:
-                    # NOTE: P1 perspective. 1 if P1 wins, -1 if P2 wins, 0 if tie
-                    winner = self.evaluate_showdown(public_cards, hole_pair_1, hole_pair_2)
-                    utility_matrix[index_1].append(winner)
-                    
-        self.hole_pair_keys = hole_pair_keys
-        
-        return np.asarray(utility_matrix), hole_pair_keys
-    
-    def get_all_hole_pair_keys(self):       
+    def get_all_hole_pair_keys(self) -> list[str]:       
         card_deck = CardDeck(self.use_limited_deck)
         
         hole_pair_keys = []
@@ -338,15 +363,6 @@ class PokerOracle:
         
         self.hole_pair_keys = hole_pair_keys
         return self.hole_pair_keys
-
-
-    def get_utility_matrix_indices_by_hole_cards(self, hole_pair_1: list[Card], hole_pair_2: list[Card]) -> tuple[int, int]:
-        # NOTE: Allows for getting the entry in the utility matrix directly from the hole cards
-        key_hole_pair_1 = self.get_hole_pair_key(hole_pair_1)
-        key_hole_pair_2 = self.get_hole_pair_key(hole_pair_2)
-        index_hole_pair_1 = self.hole_pair_keys.index(key_hole_pair_1)
-        index_hole_pair_2 = self.hole_pair_keys.index(key_hole_pair_2)
-        return index_hole_pair_1, index_hole_pair_2
 
 
     def is_card_overlap(self, hole_pair_1: list[Card], hole_pair_2: list[Card], public_cards: list[Card]) -> bool:
@@ -381,10 +397,12 @@ class PokerOracle:
                     hole_pairs_by_type[pair_type_key] = [hole_pair]
         return hole_pairs_by_type
     
+    
     def get_deck_of_cards(self) -> CardDeck:
         return CardDeck(limited=self.use_limited_deck)
     
 
+# MARK: Main
 if __name__ == "__main__":
 
     use_limited_deck = True
