@@ -165,7 +165,18 @@ class PokerOracle:
         if p1_highest_card.get_rank() > p2_highest_card.get_rank():
             return p1_win
         elif p1_highest_card.get_rank() == p2_highest_card.get_rank():
-            return tie
+            # NOTE: In case ranks of highest cards are equal
+            # Need to also check each players hole card which is not included in the "best set" 
+            p1_hole_card_not_in_best_set = [hole_card for hole_card in p1_hole_cards if hole_card not in p1_best_set]
+            p2_hole_card_not_in_best_set = [hole_card for hole_card in p2_hole_cards if hole_card not in p2_best_set]
+            p1_hole_card_not_in_best_set = p1_hole_card_not_in_best_set if len(p1_hole_card_not_in_best_set) > 0 else p1_hole_cards
+            p2_hole_card_not_in_best_set = p2_hole_card_not_in_best_set if len(p2_hole_card_not_in_best_set) > 0 else p2_hole_cards
+            p1_highest_hole_card = self.get_highest_card(p1_hole_card_not_in_best_set) 
+            p2_highest_hole_card = self.get_highest_card(p2_hole_card_not_in_best_set) 
+            if p1_highest_hole_card.get_rank() == p2_highest_hole_card.get_rank():
+                return tie
+            if p1_highest_hole_card.get_rank() > p2_highest_hole_card.get_rank():
+                return p1_win
         return p2_win
     
     # TODO: Sometimes returns a 0 probability for win. Is this realistic?
