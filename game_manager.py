@@ -2,8 +2,199 @@ from poker_oracle import PokerOracle
 from card_deck import Card, CardDeck
 from resolver import Resolver
 from state_manager import PokerStateManager
+from neural_networks import NeuralNetwork
 import numpy as np
 import copy
+
+# MARK: Poker agents
+
+class PokerAgent():
+    def __init__(self, type: str, initial_chips: int, name: str):
+        self.name = name
+        self.type = type
+        self.num_chips = initial_chips
+        self.hole_cards: list[Card] = None
+        self.current_bet = 0
+       
+        
+    def __str__(self) -> str:
+        return self.type + " " + self.name
+    
+    
+    def __eq__(self, poker_agent) -> bool:
+        return self.__str__() == poker_agent.__str__()
+        
+        
+    def recieve_hole_cards(self, hole_cards: list[Card]):
+        self.hole_cards = hole_cards
+    
+ 
+    def bet(self, num_chips: int) -> int:
+        if self.num_chips > num_chips:
+            self.current_bet += num_chips
+            self.num_chips -= num_chips
+        else:
+            self.current_bet += self.num_chips
+            self.num_chips = 0
+        
+        return self.current_bet
+    
+    
+    def recieve_winnings(self, num_chips: int):
+        self.num_chips += num_chips
+    
+    
+    def get_action(self) -> str:
+        pass
+
+
+class RolloutPokerAgent(PokerAgent):
+    
+    def __init__(self, type: str, initial_chips: int, name: str):
+        super().__init__(type, initial_chips, name)
+    
+    # Implementing get action for a pure rollout based agent
+    def get_action(self, public_cards: list[Card], num_opponents: int, rollout_count: int, poker_oracle: PokerOracle) -> str:
+        # TODO: Should get probabilities from a pre-generated (and preferably saved) cheat sheet
+        # TODO: Probability thresholds should be initialization paramaters
+        # TODO: The probabilities could vary depending on stage of the game
+        # TODO: Should have a probaibility of bluffin, i.e. a probability of raining with a bad hand (when you actually want to fold)
+        if public_cards == []:
+            try:
+                OPPONENTS = 6
+                ROLLOUTS = 1000
+                cheat_sheet = poker_oracle.load_cheat_sheet(OPPONENTS, ROLLOUTS)
+                win_probability = poker_oracle.get_cheat_sheet_hole_pair_probabilitiy(self.hole_cards, num_opponents, cheat_sheet)
+            except:
+                 win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count)
+        else:
+            win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
+        print(win_probability)
+        if win_probability >= 0.6:
+            action = "raise"
+        elif win_probability >= 0.3:
+            action = "call"
+        else:
+            action = "fold" 
+        return action
+        
+        
+class ResolverPokerAgent(PokerAgent):
+    
+    def __init__(self, type: str, initial_chips: int, name: str):
+        super().__init__(type, initial_chips, name)
+    
+    def get_action(self, public_cards: list[Card], poker_oracle: PokerOracle, state_manager: PokerStateManager, resolver: Resolver, game_snapshot) -> str:
+        strategy = resolver.get_initial_strategy()
+        acting_player_copy = copy.deepcopy(game_snapshot["acting_player"])
+        players_copy = copy.deepcopy(game_snapshot["round_players"])
+        pot_copy = copy.deepcopy(game_snapshot["pot"])
+        num_raises_copy = copy.deepcopy(game_snapshot["num_raises_left"])
+        # bets_and_chips = [(copy.deepcopy(player.current_bet), copy.deepcopy(player.num_chips)) for player in game_snapshot["round_players"]]
+        # pot = copy.deepcopy(game_snapshot["pot"])
+        # table_bet = copy.deepcopy(game_snapshot["table_bet"])
+        # TODO: This may be altering the pots and bets of the players
+        # TODO: Maybe even removes players. 
+        # TODO: State manager should get a copy of the players.
+        # Then I may need to operate on indexes instead of acting player objects.
+        root_state = state_manager.generate_root_state(
+                                            # acting_player=game_snapshot["acting_player"], 
+                                            # players=game_snapshot["round_players"], 
+                                            acting_player=acting_player_copy,
+                                            players=players_copy,
+                                            public_cards=public_cards, 
+                                            pot=pot_copy, 
+                                            num_raises_left=num_raises_copy, 
+                                            bet_to_call=game_snapshot["table_bet"],
+                                            stage=game_snapshot["stage"],
+                                            initial_round_action_history=game_snapshot["round_history"],
+                                            initial_depth=game_snapshot["depth"],
+                                            strategy_matrix=strategy
+                                            )
+        # for i, player in enumerate(game_snapshot["round_players"]):
+        #     player.current_bet = bets_and_chips[i][0]
+        #     player.num_chips = bets_and_chips[i][1]
+        #     print(i)
+        # game_snapshot["pot"] = pot
+        # game_snapshot["table_bet"] = table_bet
+            
+        acting_player_range, other_player_range = resolver.get_initial_ranges(public_cards, self.hole_cards)
+        end_stage = PokerStateManager.get_next_stage(game_snapshot["stage"])
+        end_depth = 1 
+        num_rollouts = 1
+        strategy = resolver.resolve(root_state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts)
+        hole_pair_key = poker_oracle.get_hole_pair_key(self.hole_cards)
+        all_hole_pair_keys = poker_oracle.get_all_hole_pair_keys()
+        hole_pair_index = all_hole_pair_keys.index(hole_pair_key)
+        strategy_entry: np.ndarray = strategy[hole_pair_index]
+        # NOTE: Try greedy apporach
+        # action_key = str(np.argmax(strategy_entry))
+        # NOTE: Choose action based on distribution from strategy
+        # First need to ensure that prbabilities sum to one.
+        try:
+            chosen_action_probaility = np.random.choice(strategy_entry, p=strategy_entry)
+        except ValueError:
+            strategy_entry = strategy_entry.round(decimals = 3)
+            strategy_entry_normalized = strategy_entry / np.sum(strategy_entry)
+            print(strategy_entry, strategy_entry_normalized) # TODO: Need to fix issue where values in strategy_entry sums to MORE THAN ONE 
+            chosen_action_probaility = np.random.choice(strategy_entry, p=strategy_entry_normalized)
+        print(chosen_action_probaility, strategy_entry)
+        # NOTE: Sometimes multiple actions have the same probability. To avoid this leading to folds, i choose that this should lead to the index of highest value.
+        action_index = np.where(strategy_entry == chosen_action_probaility)[0][-1]
+        print(action_index)
+        action_key = str(action_index)
+        key_to_action = {"0": "fold", "1": "call", "2": "raise"}
+        action = key_to_action[action_key]
+        return action
+        
+          
+class CombinationPokerAgent(PokerAgent):
+    def __init__(self, type: str, initial_chips: int, name: str):
+        super().__init__(type, initial_chips, name)
+    
+    #  TODO: 
+    def get_action(self, public_cards: list[Card], num_opponents: int, poker_oracle: PokerOracle) -> str:
+        pass
+
+
+class HumanPlayer(PokerAgent):
+    def __init__(self, type: str, initial_chips: int, name: str):
+        super().__init__(type, initial_chips, name)
+
+    def get_action(self, public_cards: list[Card], game_snapshot) -> str:
+        hole_cards = [str(card) for card in self.hole_cards]
+        public_cards = [str(card) for card in public_cards]
+        index_to_action = {"0": "fold", "1": "call", "2": "raise"}
+        pot = game_snapshot["pot"]
+        table_bet = game_snapshot["table_bet"]
+        all_player_bet = game_snapshot["all_player_bets"]
+        all_player_chips = game_snapshot["all_player_chips"]
+        small_blind = game_snapshot["small_blind_player"]
+        big_blind = game_snapshot["big_blind_player"]
+        print(f"Player {self.name}'s turn!")
+        print("Cards:")
+        print(f"Your hole cards: {hole_cards}")
+        print(f"Public cards: {public_cards}")
+        print("Pot, bets and piles:")
+        print(f"Current pot: {pot}")
+        print(f"Bet on table: {table_bet}")
+        print(f"Your current bet: {self.current_bet}")
+        print(f"Other players current bet: {all_player_bet}")
+        print(f"Number of chips for call: {table_bet - self.current_bet if table_bet > self.current_bet else 0}")
+        print(f"Your pile of chips: {self.num_chips}")
+        print(f"Other players piles of chips: {all_player_chips}")
+        print("Blinds:")
+        print(f"Player {small_blind} is small blind")
+        print(f"Player {big_blind} is big blind")
+        print("Choose action: 0 (fold), 1 (call), 2 (raise)")
+        action_index = ""
+        while action_index not in list(index_to_action.keys()):
+            action_index = input("> ")
+        action = index_to_action[action_index]
+        return action
+
+
+# MARK: Poker game mangager
 
 class PokerGameManager:
     
@@ -32,20 +223,7 @@ class PokerGameManager:
         self.resolver = Resolver(self.state_manager, self.poker_oracle)
         
     
-    
-    # NOTE: Based on "Generate Poker Agents" from slides
-    def add_poker_agent(self, agent_type: str, chips: int, name: str) -> None:
-        if agent_type == "rollout":
-            poker_agent = RolloutPokerAgent(agent_type, chips, name)
-        elif agent_type == "resolver":
-            poker_agent = ResolverPokerAgent(agent_type, chips, name) # TODO: NOT WORKING!
-        elif agent_type == "combination":
-            poker_agent = CombinationPokerAgent(agent_type, chips, name) # TODO: NOT WORKING!
-        elif agent_type == "human":
-            poker_agent = HumanPlayer(agent_type, chips, name)
-        self.poker_agents.append(poker_agent)
-    
-    # NOTE: Based on "Manage Game" from slides
+# MARK: Run full game    
     def run_one_game(self):
         
         self.current_game_players = self.poker_agents
@@ -70,8 +248,8 @@ class PokerGameManager:
         
         print("Game winner:", self.current_game_players[0])
         
-    
-    def run_one_hand(self, small_blind_index, big_blind_index):
+# MARK: Run one hand in game  
+    def run_one_hand(self, small_blind_index: int, big_blind_index: int):
         # Assumes two or more players
         # Run one hand to showdown
         self.current_hand_players = self.current_game_players[:]
@@ -118,7 +296,6 @@ class PokerGameManager:
             if len(self.current_hand_players) == 1:
                 winners.append(self.current_hand_players[0])
         
-        
         # Winner recieves pot
         if len(winners) > 1:
             print("No winner, split pot!")
@@ -143,7 +320,8 @@ class PokerGameManager:
         self.public_cards = []
         self.current_stage = "pre-flop"
         
-            
+        
+# MARK: Run one stage in hand            
     def run_one_stage(self, card_deck: CardDeck, small_blind_index: int, big_blind_index: int):    
             legal_num_raises = self.legal_num_raises_per_stage
             self.current_round_actions = []
@@ -235,7 +413,7 @@ class PokerGameManager:
                     self.current_round_actions.append(played_action)            
 
             
-    def run_buy_in_round(self, legal_num_raises: int, small_blind_index: int, big_blind_index: int):
+    def run_buy_in_round(self, legal_num_raises: int, small_blind_index: int, big_blind_index: int) -> int:
         self.current_round_actions = []
         small_blind_index = small_blind_index
         big_blind_index = big_blind_index
@@ -348,8 +526,21 @@ class PokerGameManager:
         
         return legal_num_raises
             
-               
-    def adjust_player_index_for_removal(self, i, small_blind_index, big_blind_index, initial_player_count):
+# MARK: Helper functions         
+
+    def add_poker_agent(self, agent_type: str, chips: int, name: str):
+        if agent_type == "rollout":
+            poker_agent = RolloutPokerAgent(agent_type, chips, name)
+        elif agent_type == "resolver":
+            poker_agent = ResolverPokerAgent(agent_type, chips, name) # TODO: NOT WORKING!
+        elif agent_type == "combination":
+            poker_agent = CombinationPokerAgent(agent_type, chips, name) # TODO: NOT WORKING!
+        elif agent_type == "human":
+            poker_agent = HumanPlayer(agent_type, chips, name)
+        self.poker_agents.append(poker_agent)
+
+      
+    def adjust_player_index_for_removal(self, i: int, small_blind_index: int, big_blind_index: int, initial_player_count: int) -> tuple[int]:
         num_removed_players = initial_player_count - len(self.current_hand_players)
         
         i = (i - num_removed_players) % len(self.current_hand_players)
@@ -359,7 +550,7 @@ class PokerGameManager:
         return i, small_blind_index, big_blind_index
     
                 
-    def handle_desired_action(self, player, desired_action: str, legal_num_raises: int):
+    def handle_desired_action(self, player: PokerAgent, desired_action: str, legal_num_raises: int) -> tuple[str, int]:
         played_action = desired_action
         if desired_action == "fold":
             played_action, self.current_hand_players = PokerStateManager.handle_fold(player, self.current_hand_players)
@@ -376,7 +567,7 @@ class PokerGameManager:
         return played_action, legal_num_raises
         
         
-    def can_go_to_next_hand(self, players_remaining_in_hand) -> bool:
+    def can_go_to_next_hand(self, players_remaining_in_hand: list[PokerAgent]) -> bool:
         return len(players_remaining_in_hand) == 1
     
     
@@ -391,209 +582,7 @@ class PokerGameManager:
             return card_deck.deal(1)
 
     
-    def prepare_new_game(self, keep_players: bool):
-        if not keep_players:
-            self.poker_agents = []
-        self.pot = 0
-        self.public_cards = []
-        
-    def set_small_blind_chips(self, num_chips: int):
-        self.small_blind_chips = num_chips
-        
-    def set_big_blind_chips(self, num_chips: int):
-        self.big_blind_chips = num_chips
-    
-    # NOTE: Based on "Monitor Players" from slides
-    def monitor_players():
-        pass
-    
-    # NOTE: Based on "Texas Hold'em Simulator" from slides
-    def texas_holdem_simulator(self, num_players: int, num_games: int):
-        pass
-    
-    # TODO: Add method for taking a "snapshot" of the game state and initialize a state object to be used in the resolver.
-    # This will be called each time a player capable of using the resolver is to make a decision. Maybe this should be a Agent method and not Game Manager method.
-    
-    
-class PokerAgent():
-    def __init__(self, type: str, initial_chips: int, name: str):
-        self.name = name
-        self.type = type
-        self.num_chips = initial_chips
-        self.hole_cards: list[Card] = None
-        self.current_bet = 0
-        
-    def __str__(self) -> str:
-        return self.type + " " + self.name
-    
-    def __eq__(self, poker_agent):
-        return self.__str__() == poker_agent.__str__()
-        
-    def recieve_hole_cards(self, hole_cards: list[Card]):
-        self.hole_cards = hole_cards
-    
-    # I think this is reasonable
-    def bet(self, num_chips: int) -> int:
-        if self.num_chips > num_chips:
-            self.current_bet += num_chips
-            self.num_chips -= num_chips
-        else:
-            self.current_bet += self.num_chips
-            self.num_chips = 0
-        
-        return self.current_bet
-    
-    def recieve_winnings(self, num_chips: int) -> None:
-        self.num_chips += num_chips
-    
-    def get_action(self, public_cards: list[Card], num_opponents: int, poker_oracle: PokerOracle) -> str:
-        pass
-
-
-class RolloutPokerAgent(PokerAgent):
-    def __init__(self, type: str, initial_chips: int, name: str):
-        super().__init__(type, initial_chips, name)
-    
-    # Implementing get action for a pure rollout based agent
-    def get_action(self, public_cards: list[Card], num_opponents: int, rollout_count: int, poker_oracle: PokerOracle) -> str:
-        # TODO: Should get probabilities from a pre-generated (and preferably saved) cheat sheet
-        # TODO: Probability thresholds should be initialization paramaters
-        # TODO: The probabilities could vary depending on stage of the game
-        # TODO: Should have a probaibility of bluffin, i.e. a probability of raining with a bad hand (when you actually want to fold)
-        if public_cards == []:
-            try:
-                OPPONENTS = 6
-                ROLLOUTS = 1000
-                cheat_sheet = poker_oracle.load_cheat_sheet(OPPONENTS, ROLLOUTS)
-                win_probability = poker_oracle.get_cheat_sheet_hole_pair_probabilitiy(self.hole_cards, num_opponents, cheat_sheet)
-            except:
-                 win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count)
-        else:
-            win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
-        print(win_probability)
-        if win_probability >= 0.6:
-            action = "raise"
-        elif win_probability >= 0.3:
-            action = "call"
-        else:
-            action = "fold" 
-        return action
-        
-        
-class ResolverPokerAgent(PokerAgent):
-    def __init__(self, type: str, initial_chips: int, name: str):
-        super().__init__(type, initial_chips, name)
-    
-    # TODO: GENERAL PROBLEM! BOTH REOLLOUT AND RESOLVER CRASH IF BOTH PLAYERS FOLD IN SAME TURN
-    def get_action(self, public_cards: list[Card], poker_oracle: PokerOracle, state_manager: PokerStateManager, resolver: Resolver, game_snapshot) -> str:
-        strategy = resolver.get_initial_strategy()
-        acting_player_copy = copy.deepcopy(game_snapshot["acting_player"])
-        players_copy = copy.deepcopy(game_snapshot["round_players"])
-        pot_copy = copy.deepcopy(game_snapshot["pot"])
-        num_raises_copy = copy.deepcopy(game_snapshot["num_raises_left"])
-        # bets_and_chips = [(copy.deepcopy(player.current_bet), copy.deepcopy(player.num_chips)) for player in game_snapshot["round_players"]]
-        # pot = copy.deepcopy(game_snapshot["pot"])
-        # table_bet = copy.deepcopy(game_snapshot["table_bet"])
-        # TODO: This may be altering the pots and bets of the players
-        # TODO: Maybe even removes players. 
-        # TODO: State manager should get a copy of the players.
-        # Then I may need to operate on indexes instead of acting player objects.
-        root_state = state_manager.generate_root_state(
-                                            # acting_player=game_snapshot["acting_player"], 
-                                            # players=game_snapshot["round_players"], 
-                                            acting_player=acting_player_copy,
-                                            players=players_copy,
-                                            public_cards=public_cards, 
-                                            pot=pot_copy, 
-                                            num_raises_left=num_raises_copy, 
-                                            bet_to_call=game_snapshot["table_bet"],
-                                            stage=game_snapshot["stage"],
-                                            initial_round_action_history=game_snapshot["round_history"],
-                                            initial_depth=game_snapshot["depth"],
-                                            strategy_matrix=strategy
-                                            )
-        # for i, player in enumerate(game_snapshot["round_players"]):
-        #     player.current_bet = bets_and_chips[i][0]
-        #     player.num_chips = bets_and_chips[i][1]
-        #     print(i)
-        # game_snapshot["pot"] = pot
-        # game_snapshot["table_bet"] = table_bet
-            
-        acting_player_range, other_player_range = resolver.get_initial_ranges(public_cards, self.hole_cards)
-        end_stage = PokerStateManager.get_next_stage(game_snapshot["stage"])
-        end_depth = 1 
-        num_rollouts = 1
-        strategy = resolver.resolve(root_state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts)
-        hole_pair_key = poker_oracle.get_hole_pair_key(self.hole_cards)
-        all_hole_pair_keys = poker_oracle.get_all_hole_pair_keys()
-        hole_pair_index = all_hole_pair_keys.index(hole_pair_key)
-        strategy_entry: np.ndarray = strategy[hole_pair_index]
-        # NOTE: Try greedy apporach
-        # action_key = str(np.argmax(strategy_entry))
-        # NOTE: Choose action based on distribution from strategy
-        # First need to ensure that prbabilities sum to one.
-        try:
-            chosen_action_probaility = np.random.choice(strategy_entry, p=strategy_entry)
-        except ValueError:
-            strategy_entry = strategy_entry.round(decimals = 3)
-            strategy_entry_normalized = strategy_entry / np.sum(strategy_entry)
-            print(strategy_entry, strategy_entry_normalized) # TODO: Need to fix issue where values in strategy_entry sums to MORE THAN ONE 
-            chosen_action_probaility = np.random.choice(strategy_entry, p=strategy_entry_normalized)
-        print(chosen_action_probaility, strategy_entry)
-        # NOTE: Sometimes multiple actions have the same probability. To avoid this leading to folds, i choose that this should lead to the index of highest value.
-        action_index = np.where(strategy_entry == chosen_action_probaility)[0][-1]
-        print(action_index)
-        action_key = str(action_index)
-        key_to_action = {"0": "fold", "1": "call", "2": "raise"}
-        action = key_to_action[action_key]
-        return action
-        
-        
-        
-class CombinationPokerAgent(PokerAgent):
-    def __init__(self, type: str, initial_chips: int, name: str):
-        super().__init__(type, initial_chips, name)
-    
-    def get_action(self, public_cards: list[Card], num_opponents: int, poker_oracle: PokerOracle) -> str:
-        pass
-
-class HumanPlayer(PokerAgent):
-    def __init__(self, type: str, initial_chips: int, name: str):
-        super().__init__(type, initial_chips, name)
-    
-    def get_action(self, public_cards: list[Card], game_snapshot) -> str:
-        hole_cards = [str(card) for card in self.hole_cards]
-        public_cards = [str(card) for card in public_cards]
-        index_to_action = {"0": "fold", "1": "call", "2": "raise"}
-        pot = game_snapshot["pot"]
-        table_bet = game_snapshot["table_bet"]
-        all_player_bet = game_snapshot["all_player_bets"]
-        all_player_chips = game_snapshot["all_player_chips"]
-        small_blind = game_snapshot["small_blind_player"]
-        big_blind = game_snapshot["big_blind_player"]
-        print(f"Player {self.name}'s turn!")
-        print("Cards:")
-        print(f"Your hole cards: {hole_cards}")
-        print(f"Public cards: {public_cards}")
-        print("Pot, bets and piles:")
-        print(f"Current pot: {pot}")
-        print(f"Bet on table: {table_bet}")
-        print(f"Your current bet: {self.current_bet}")
-        print(f"Other players current bet: {all_player_bet}")
-        print(f"Number of chips for call: {table_bet - self.current_bet if table_bet > self.current_bet else 0}")
-        print(f"Your pile of chips: {self.num_chips}")
-        print(f"Other players piles of chips: {all_player_chips}")
-        print("Blinds:")
-        print(f"Player {small_blind} is small blind")
-        print(f"Player {big_blind} is big blind")
-        print("Choose action: 0 (fold), 1 (call), 2 (raise)")
-        action_index = ""
-        while action_index not in list(index_to_action.keys()):
-            action_index = input("> ")
-        action = index_to_action[action_index]
-        return action
-    
-    
+# MARK: Main   
 if __name__ == "__main__":
     
     use_limited_deck = True
