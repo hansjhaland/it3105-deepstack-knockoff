@@ -66,9 +66,13 @@ class RolloutPokerAgent(PokerAgent):
         else:
             win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
         print(win_probability)
-        if win_probability >= 0.6:
+        
+        # NOTE: Scale probabilities based on number of players
+        num_players = num_opponents + 1
+        
+        if win_probability >= 1 / num_players:
             action = "raise"
-        elif win_probability >= 0.3:
+        elif win_probability >= 1 / (2 * num_players):
             action = "call"
         else:
             action = "fold" 
@@ -214,14 +218,16 @@ class PokerGameManager:
         
     
 # MARK: Run full game    
-    def run_one_game(self):
+    def run_one_game(self, manage_per_hand: bool = False):
         
         self.current_game_players = self.poker_agents
         
         small_blind_index = self.small_blind_player_index
         big_blind_index = (small_blind_index + 1) % len(self.current_game_players)
         
-        while len(self.current_game_players) > 1:
+        run_one_more_hand: str = ""
+        
+        while len(self.current_game_players) > 1 and not run_one_more_hand == "no":
             
             for player in self.current_game_players:
                 player.current_bet = 0
@@ -235,8 +241,12 @@ class PokerGameManager:
             current_chips = [player.num_chips for player in self.current_game_players]
             print("Current chips per player:", *current_chips)
             print()
+            
+            if manage_per_hand:
+                run_one_more_hand = input("Run another hand? [yes/no]\n> ")
         
-        print("Game winner:", self.current_game_players[0])
+        if not run_one_more_hand == "no": 
+            print("Game winner:", self.current_game_players[0])
       
         
 # MARK: Run one hand in game  
@@ -289,7 +299,7 @@ class PokerGameManager:
         
         # Winner recieves pot
         if len(winners) > 1:
-            print("No winner, split pot!")
+            print("It's a tie, split pot!")
             # Split pot if two players are tied. (Using integer division to avoid floating point numbers)
             for player in self.current_hand_players:
                 player.recieve_winnings(self.pot//len(winners))  # NOTE: May get weird if there are an odd number of winners.
@@ -321,7 +331,8 @@ class PokerGameManager:
             # Deal out public new public cards for stage
             self.public_cards = [*self.public_cards, *self.deal_public_cards(card_deck)]
             
-            players_in_order = [*self.current_hand_players[small_blind_index:], *self.current_hand_players[:small_blind_index]]
+            # players_in_order = [*self.current_hand_players[small_blind_index:], *self.current_hand_players[:small_blind_index]]
+            
             
             # Small and big blind only has to "buy in" in pre-flop stage
             # In later stages, small blind is just the first to act.
@@ -336,6 +347,8 @@ class PokerGameManager:
                     return
             
             players_in_order = [*self.current_hand_players[small_blind_index:], *self.current_hand_players[:small_blind_index]]
+            
+            print(*players_in_order)
             
             remove_folded_players = False # NOTE: Don't remove folded players directly after buy in round. May cause crash if someone folded in buy in round.
             
