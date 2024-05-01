@@ -97,7 +97,7 @@ class PokerOracle:
         lower_set = rank_set[:-1]
         upper_set = rank_set[1:]
         for lower, upper in zip(lower_set, upper_set):
-            if not upper == lower + 1:
+            if not (upper == (lower + 1)):
                 return False
         return True
         
