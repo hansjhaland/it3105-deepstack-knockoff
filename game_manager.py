@@ -15,20 +15,16 @@ class PokerAgent():
         self.num_chips = initial_chips
         self.hole_cards: list[Card] = None
         self.current_bet = 0
-       
         
     def __str__(self) -> str:
         return self.type + " " + self.name
     
-    
     def __eq__(self, poker_agent) -> bool:
         return self.__str__() == poker_agent.__str__()
-        
         
     def recieve_hole_cards(self, hole_cards: list[Card]):
         self.hole_cards = hole_cards
     
- 
     def bet(self, num_chips: int) -> int:
         if self.num_chips > num_chips:
             self.current_bet += num_chips
@@ -47,7 +43,7 @@ class PokerAgent():
     def get_action(self) -> str:
         pass
 
-
+# MARK: Rollout
 class RolloutPokerAgent(PokerAgent):
     
     def __init__(self, type: str, initial_chips: int, name: str):
@@ -78,28 +74,20 @@ class RolloutPokerAgent(PokerAgent):
             action = "fold" 
         return action
         
-        
+ 
+# MARK: Resolver        
 class ResolverPokerAgent(PokerAgent):
     
     def __init__(self, type: str, initial_chips: int, name: str):
         super().__init__(type, initial_chips, name)
     
-    def get_action(self, public_cards: list[Card], poker_oracle: PokerOracle, state_manager: PokerStateManager, resolver: Resolver, game_snapshot) -> str:
+    def get_action(self, public_cards: list[Card], poker_oracle: PokerOracle, state_manager: PokerStateManager, resolver: Resolver, game_snapshot: dict) -> str:
         strategy = resolver.get_initial_strategy()
         acting_player_copy = copy.deepcopy(game_snapshot["acting_player"])
         players_copy = copy.deepcopy(game_snapshot["round_players"])
         pot_copy = copy.deepcopy(game_snapshot["pot"])
         num_raises_copy = copy.deepcopy(game_snapshot["num_raises_left"])
-        # bets_and_chips = [(copy.deepcopy(player.current_bet), copy.deepcopy(player.num_chips)) for player in game_snapshot["round_players"]]
-        # pot = copy.deepcopy(game_snapshot["pot"])
-        # table_bet = copy.deepcopy(game_snapshot["table_bet"])
-        # TODO: This may be altering the pots and bets of the players
-        # TODO: Maybe even removes players. 
-        # TODO: State manager should get a copy of the players.
-        # Then I may need to operate on indexes instead of acting player objects.
         root_state = state_manager.generate_root_state(
-                                            # acting_player=game_snapshot["acting_player"], 
-                                            # players=game_snapshot["round_players"], 
                                             acting_player=acting_player_copy,
                                             players=players_copy,
                                             public_cards=public_cards, 
@@ -111,12 +99,6 @@ class ResolverPokerAgent(PokerAgent):
                                             initial_depth=game_snapshot["depth"],
                                             strategy_matrix=strategy
                                             )
-        # for i, player in enumerate(game_snapshot["round_players"]):
-        #     player.current_bet = bets_and_chips[i][0]
-        #     player.num_chips = bets_and_chips[i][1]
-        #     print(i)
-        # game_snapshot["pot"] = pot
-        # game_snapshot["table_bet"] = table_bet
             
         acting_player_range, other_player_range = resolver.get_initial_ranges(public_cards, self.hole_cards)
         end_stage = PokerStateManager.get_next_stage(game_snapshot["stage"])
@@ -146,17 +128,25 @@ class ResolverPokerAgent(PokerAgent):
         key_to_action = {"0": "fold", "1": "call", "2": "raise"}
         action = key_to_action[action_key]
         return action
+ 
         
-          
+# MARK: Combination          
 class CombinationPokerAgent(PokerAgent):
     def __init__(self, type: str, initial_chips: int, name: str):
         super().__init__(type, initial_chips, name)
     
     #  TODO: 
-    def get_action(self, public_cards: list[Card], num_opponents: int, poker_oracle: PokerOracle) -> str:
-        pass
-
-
+    def get_action(self, public_cards: list[Card], num_opponents: int, rollout_count: int, poker_oracle: PokerOracle, state_manager: PokerStateManager, resolver: Resolver, game_snapshot: dict) -> str:
+        decision_methods = ["rollout", "resolve"]
+        method_index = np.random.choice([0, 1], p=[0.8, 0.2])
+        decision_method = decision_methods[method_index]
+        print(decision_method)
+        if decision_method == "resolve":
+            return ResolverPokerAgent.get_action(self, public_cards, poker_oracle, state_manager, resolver, game_snapshot)
+        return RolloutPokerAgent.get_action(self, public_cards, num_opponents, rollout_count, poker_oracle)
+        
+        
+# MARK: Human
 class HumanPlayer(PokerAgent):
     def __init__(self, type: str, initial_chips: int, name: str):
         super().__init__(type, initial_chips, name)
@@ -247,6 +237,7 @@ class PokerGameManager:
             print()
         
         print("Game winner:", self.current_game_players[0])
+      
         
 # MARK: Run one hand in game  
     def run_one_hand(self, small_blind_index: int, big_blind_index: int):
@@ -388,7 +379,7 @@ class PokerGameManager:
                                 game_snapshot["all_player_bets"].append((round_player.name, player.current_bet))
                                 game_snapshot["all_player_chips"].append((round_player.name, player.num_chips))
                         desired_action = player.get_action(self.public_cards, game_snapshot)
-                    if isinstance(player, ResolverPokerAgent):
+                    elif isinstance(player, ResolverPokerAgent):
                         game_snapshot = {
                              "acting_player": player,
                              "round_players": self.current_hand_players,
@@ -401,6 +392,18 @@ class PokerGameManager:
                              }
                         
                         desired_action = player.get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                    elif isinstance(player, CombinationPokerAgent):
+                        game_snapshot = {
+                             "acting_player": player,
+                             "round_players": self.current_hand_players,
+                             "pot": self.pot,
+                             "num_raises_left": legal_num_raises,
+                             "table_bet": self.current_bet,
+                             "stage": self.current_stage,
+                             "round_history": self.current_round_actions,
+                             "depth": self.depth
+                             }   
+                        desired_action = player.get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     else:
                         desired_action = player.get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(player, desired_action, legal_num_raises)
@@ -443,7 +446,7 @@ class PokerGameManager:
                     if not player.name == self.current_hand_players[i].name:
                         game_snapshot["all_player_bets"].append((player.name, player.current_bet))
                         game_snapshot["all_player_chips"].append((player.name, player.num_chips))
-            if isinstance(self.current_hand_players[i], ResolverPokerAgent):
+            if isinstance(self.current_hand_players[i], ResolverPokerAgent) or isinstance(self.current_hand_players[i], CombinationPokerAgent):
                 game_snapshot = {
                     "acting_player": self.current_hand_players[i],
                     "round_players": self.current_hand_players,
@@ -468,8 +471,10 @@ class PokerGameManager:
                     if isinstance(self.current_hand_players[i], HumanPlayer):
                         game_snapshot["pot"] = self.pot
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
-                    if isinstance(self.current_hand_players[i], ResolverPokerAgent):
+                    elif isinstance(self.current_hand_players[i], ResolverPokerAgent):
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                    elif isinstance(self.current_hand_players[i], CombinationPokerAgent):
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     else:
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
@@ -489,8 +494,10 @@ class PokerGameManager:
                     self.pot += self.current_hand_players[i].bet(self.big_blind_chips)
                     if isinstance(self.current_hand_players[i], HumanPlayer):
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
-                    if isinstance(self.current_hand_players[i], ResolverPokerAgent):
+                    elif isinstance(self.current_hand_players[i], ResolverPokerAgent):
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                    elif isinstance(self.current_hand_players[i], CombinationPokerAgent):
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     else:
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
@@ -501,19 +508,14 @@ class PokerGameManager:
                         print(f"Player {print_player} decided to {played_action}")
                         print()
             else:
-                try:
-                    if isinstance(self.current_hand_players[i], HumanPlayer):
-                        desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
-                    if isinstance(self.current_hand_players[i], ResolverPokerAgent):
-                        desired_action = player.get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
-                    else:
-                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
-                except:
-                    print(f"Player index {i}")
-                    print(f"Number of players {len(self.current_hand_players)}")
-                    print(f"Player {small_blind_index}, {self.current_hand_players[small_blind_index]}")
-                    print(f"Player {big_blind_index}, {self.current_hand_players[big_blind_index]}")
-                    print()
+                if isinstance(self.current_hand_players[i], HumanPlayer):
+                    desired_action = self.current_hand_players[i].get_action(self.public_cards, game_snapshot)
+                elif isinstance(self.current_hand_players[i], ResolverPokerAgent):
+                    desired_action = self.current_hand_players[i].get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                elif isinstance(self.current_hand_players[i], CombinationPokerAgent):
+                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                else:
+                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
                 played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
                 if not desired_action == played_action:
                     print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
@@ -525,6 +527,7 @@ class PokerGameManager:
             self.current_round_actions.append(played_action)
         
         return legal_num_raises
+           
             
 # MARK: Helper functions         
 
@@ -598,8 +601,8 @@ if __name__ == "__main__":
     # game_manager.add_poker_agent("rollout", 30, "Eric")
     # game_manager.add_poker_agent("rollout", 30, "Fred")
     
-    game_manager.add_poker_agent("resolver", 30, "Gary")
-    game_manager.add_poker_agent("resolver", 30, "Holly")
+    game_manager.add_poker_agent("combination", 30, "Gary")
+    game_manager.add_poker_agent("combination", 30, "Holly")
     
     game_manager.run_one_game()
     
