@@ -1,6 +1,8 @@
 from card_deck import Card
 from poker_oracle import PokerOracle
 
+# MARK: Hand classification
+
 #==== ROYAL FLUSH ====
 royal_flush = [
     Card('D',14),
@@ -139,90 +141,99 @@ high_card = [
     Card('S',2),
 ]
 
-if __name__ == "__main__":
-    po = PokerOracle()
-    
-    print(po.hand_classifier(royal_flush)[0], "royal_flush")  
-    print(po.hand_classifier(straight_flush_1)[0], "straight_flush")  
-    print(po.hand_classifier(four_of_a_kind_1)[0], "four_of_a_kind")
-    print(po.hand_classifier(full_house_1)[0], "full_house")
-    print(po.hand_classifier(flush_1)[0], "flush")
-    print(po.hand_classifier(straight_1)[0], "straight") 
-    print(po.hand_classifier(three_of_a_kind_1)[0], "three_of_a_kind" )
-    print(po.hand_classifier(two_pair_1)[0], "two_pair") 
-    print(po.hand_classifier(pair_1)[0], "pair") 
-    print(po.hand_classifier(high_card)[0], "high_card")
+po = PokerOracle()
+
+print(po.hand_classifier(royal_flush)[0], "royal_flush")  
+print(po.hand_classifier(straight_flush_1)[0], "straight_flush")  
+print(po.hand_classifier(four_of_a_kind_1)[0], "four_of_a_kind")
+print(po.hand_classifier(full_house_1)[0], "full_house")
+print(po.hand_classifier(flush_1)[0], "flush")
+print(po.hand_classifier(straight_1)[0], "straight") 
+print(po.hand_classifier(three_of_a_kind_1)[0], "three_of_a_kind" )
+print(po.hand_classifier(two_pair_1)[0], "two_pair") 
+print(po.hand_classifier(pair_1)[0], "pair") 
+print(po.hand_classifier(high_card)[0], "high_card")
+print()
+
+
+# MARK: Showdown evaluation
 
 # Check both players same hand ranking 
-    public_cards = [
-        Card('D',7),
-        Card('S',6),
-        Card('C',5),
-        Card('C',2),
-        Card('H', 10)
-    ]
-    
-    p1_hole_cards = [
-        Card('S', 8),
-        Card('H', 4)
-    ]
-    
-    p2_hole_cards = [
-        Card('S', 4),
-        Card('H', 3)
-    ]
-    
-    # P1 should win
-    print(po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards))
-    
+public_cards = [
+    Card('D', 7),
+    Card('S', 6),
+    Card('C', 5),
+    Card('C', 2),
+    Card('H', 10)
+]
+
+p1_hole_cards = [
+    Card('S', 8),
+    Card('H', 4)
+]
+
+p2_hole_cards = [
+    Card('S', 4),
+    Card('H', 3)
+]
+
+# P1 should win
+print("Evaluation:", po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards), "Target:", 1)
+
 # Check both players different hand ranking
-    public_cards = [
-        Card('D',4),
-        Card('S',4),
-        Card('C',3),
-        Card('C',2),
-        Card('H', 10)
-    ]
+public_cards = [
+    Card('D', 4),
+    Card('S', 4),
+    Card('C', 3),
+    Card('C', 2),
+    Card('H', 10)
+]
+
+p1_hole_cards = [
+    Card('S', 3),
+    Card('H', 8)
+]
+
+p2_hole_cards = [
+    Card('S', 4),
+    Card('H', 3)
+]
+
+# P2 should win
+print("Evaluation", po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards), "Target:", -1)
+print()
+
+
+# MARK: Rollout evaluation
+
+# Test rollout evaluation
+public_cards = [
+    Card('D', 11),
+    Card('S', 12),
+    Card('C', 13),
+    Card('C', 2),
+    Card('H', 4)
+]
+
+hole_pair = [
+    Card('S', 14),
+    Card('H', 10)
+]
+
+num_opponents = 4
+num_rollouts = 100
+
+print("Rollout hole pair evaluator:", po.rollout_hole_pair_evaluator(hole_pair, public_cards, num_opponents, num_rollouts))
+
+
+
+# utility_matrix, hole_pair_keys = po.utility_matrix_generator(public_cards)
+
+# for key in list(utility_matrix.keys()):
+#     print(key, utility_matrix[key])
+
+# cheat_sheet = po.poker_cheat_sheet_generator(3, 100)
+# for key in list(cheat_sheet.keys()):
+#     print(key, cheat_sheet[key])
     
-    p1_hole_cards = [
-        Card('S', 3),
-        Card('H', 8)
-    ]
-    
-    p2_hole_cards = [
-        Card('S', 4),
-        Card('H', 3)
-    ]
-    
-    # P2 should win
-    print(po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards))
-    
-    # Test rollout evaluation
-    public_cards = [
-        Card('D',11),
-        Card('S',12),
-        Card('C',13),
-        Card('C',2),
-        Card('H', 4)
-    ]
-    
-    hole_pair = [
-        Card('S', 14),
-        Card('H', 10)
-    ]
-    
-    num_opponents = 4
-    num_rollouts = 100
-    
-    print(po.rollout_hole_pair_evaluator(hole_pair, public_cards, num_opponents, num_rollouts))
-    
-    utility_matrix, hole_pair_keys = po.utility_matrix_generator(public_cards)
-    
-    for key in list(utility_matrix.keys()):
-        print(key, utility_matrix[key])
-    
-    # cheat_sheet = po.poker_cheat_sheet_generator(3, 100)
-    # for key in list(cheat_sheet.keys()):
-    #     print(key, cheat_sheet[key])
-        
-    # print(po.get_cheat_sheet_hole_pair_probabilitiy(hole_pair, 2, cheat_sheet))
+# print(po.get_cheat_sheet_hole_pair_probabilitiy(hole_pair, 2, cheat_sheet))
