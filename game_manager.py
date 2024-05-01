@@ -43,6 +43,7 @@ class PokerAgent():
     def get_action(self) -> str:
         pass
 
+
 # MARK: Rollout
 class RolloutPokerAgent(PokerAgent):
     
@@ -65,14 +66,16 @@ class RolloutPokerAgent(PokerAgent):
                  win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count)
         else:
             win_probability = poker_oracle.rollout_hole_pair_evaluator(self.hole_cards, public_cards, num_opponents, rollout_count) 
-        print(win_probability)
+        
+        print(f"Player {self.name}'s hole pair:", *self.hole_cards)
+        print("Probability:", win_probability)
         
         # NOTE: Scale probabilities based on number of players
         num_players = num_opponents + 1
         
         if win_probability >= 1 / num_players:
             action = "raise"
-        elif win_probability >= 1 / (2 * num_players):
+        elif win_probability >= 1 / (4 * num_players):
             action = "call"
         else:
             action = "fold" 
@@ -255,6 +258,9 @@ class PokerGameManager:
         # Run one hand to showdown
         self.current_hand_players = self.current_game_players[:]
         
+        # NOTE: This number is used for num_opponents in rollout.
+        self.num_players = len(self.current_hand_players) 
+        
         card_deck: CardDeck = self.poker_oracle.get_deck_of_cards()
         card_deck.shuffle()
         for player in self.current_hand_players:
@@ -268,6 +274,11 @@ class PokerGameManager:
                 card_deck.exclude(player.hole_cards)
             print()
             print(f"============ Start of {self.current_stage} stage ============")
+            
+            if self.current_stage == "pre-flop":
+                print("Small blind:", self.current_hand_players[small_blind_index])
+                print("Big blind:", self.current_hand_players[big_blind_index])
+            
             self.run_one_stage(card_deck, small_blind_index, big_blind_index)
             print("Players remaining in hand:", *self.current_hand_players, "after stage", self.current_stage)
             
@@ -282,8 +293,8 @@ class PokerGameManager:
                     print(f"SHOWDOWN with {len(self.current_hand_players)} players!")
                     
                     for player in self.current_hand_players:
+                        is_winner = True
                         for opponent in self.current_hand_players:
-                            is_winner = True
                             if player == opponent:
                                 continue
                             winner = self.poker_oracle.evaluate_showdown(self.public_cards, player.hole_cards, opponent.hole_cards)
@@ -292,20 +303,20 @@ class PokerGameManager:
                                 break
                         if is_winner:
                             winners.append(player)
-                    break
+                    break # NOTE: This breaks out of the while loop
                        
             if len(self.current_hand_players) == 1:
                 winners.append(self.current_hand_players[0])
         
         # Winner recieves pot
         if len(winners) > 1:
-            print("It's a tie, split pot!")
+            print(f"It's a tie, split pot of {self.pot}!")
             # Split pot if two players are tied. (Using integer division to avoid floating point numbers)
             for player in self.current_hand_players:
                 player.recieve_winnings(self.pot//len(winners))  # NOTE: May get weird if there are an odd number of winners.
         else:        
-            print(f"Player {self.current_hand_players[0]} won the hand and a pot of {self.pot} chips!")
-            self.current_hand_players[0].recieve_winnings(self.pot)
+            print(f"Player {winners[0]} won the hand and a pot of {self.pot} chips!")
+            winners[0].recieve_winnings(self.pot)
         # Reset pot to prepare for new hand
         self.pot = 0
         
@@ -333,7 +344,7 @@ class PokerGameManager:
             
             # players_in_order = [*self.current_hand_players[small_blind_index:], *self.current_hand_players[:small_blind_index]]
             
-            
+            print("Public cards:", *self.public_cards)
             # Small and big blind only has to "buy in" in pre-flop stage
             # In later stages, small blind is just the first to act.
             if self.current_stage == "pre-flop":
@@ -358,6 +369,9 @@ class PokerGameManager:
                 
                 print()
                 print(f"============ New round in {self.current_stage} stage ============")
+                print("Current pot:", self.pot)
+                print("Public cards:", *self.public_cards)
+                print()
                 # Update player order if someone folded
                 if remove_folded_players:
                     while "fold" in self.current_round_actions:
@@ -416,9 +430,9 @@ class PokerGameManager:
                              "round_history": self.current_round_actions,
                              "depth": self.depth
                              }   
-                        desired_action = player.get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                        desired_action = player.get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     else:
-                        desired_action = player.get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                        desired_action = player.get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(player, desired_action, legal_num_raises)
                     if not desired_action == played_action:
                         print(f"Player {player.name} wanted to {desired_action} but had to {played_action}")
@@ -487,9 +501,9 @@ class PokerGameManager:
                     elif isinstance(self.current_hand_players[i], ResolverPokerAgent):
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     elif isinstance(self.current_hand_players[i], CombinationPokerAgent):
-                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     else:
-                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
                     if not desired_action == played_action:
                         print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
@@ -510,9 +524,9 @@ class PokerGameManager:
                     elif isinstance(self.current_hand_players[i], ResolverPokerAgent):
                         desired_action = self.current_hand_players[i].get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     elif isinstance(self.current_hand_players[i], CombinationPokerAgent):
-                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                     else:
-                        desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                        desired_action = self.current_hand_players[i].get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle)
                     played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
                     if not desired_action == played_action:
                         print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
@@ -526,9 +540,9 @@ class PokerGameManager:
                 elif isinstance(self.current_hand_players[i], ResolverPokerAgent):
                     desired_action = self.current_hand_players[i].get_action(self.public_cards, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                 elif isinstance(self.current_hand_players[i], CombinationPokerAgent):
-                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
+                    desired_action = self.current_hand_players[i].get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle, self.state_manager, self.resolver, game_snapshot)
                 else:
-                    desired_action = self.current_hand_players[i].get_action(self.public_cards, len(self.current_hand_players) - 1, 100, self.poker_oracle)
+                    desired_action = self.current_hand_players[i].get_action(self.public_cards, self.num_players - 1, 100, self.poker_oracle)
                 played_action, legal_num_raises = self.handle_desired_action(self.current_hand_players[i], desired_action, legal_num_raises)
                 if not desired_action == played_action:
                     print(f"Player {print_player} wanted to {desired_action} but had to {played_action}")
