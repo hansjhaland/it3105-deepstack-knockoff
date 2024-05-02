@@ -89,7 +89,7 @@ class Resolver:
                 other_player_range_current_action = other_player_range
                 state_after_action = PokerStateManager.get_child_state_by_action(state, action) # NOTE: This only gets children that are player states
                 other_player_evaluation_current_action, acting_player_evaluation_current_action = self.subtree_traversal_rollout(state_after_action, other_player_range_current_action, acting_player_range_current_action, end_stage, end_depth)
-                for h in range(len(self.get_all_hole_pairs())): # NOTE: Scaled update of evaluations
+                for h in range(len(self.get_all_hole_pairs())):
                     a = self.action_to_index[action]
                     acting_player_evaluation[h] += state.get_strategy_matrix()[h][a] * acting_player_evaluation_current_action[h]
                     other_player_evaluation[h] += state.get_strategy_matrix()[h][a] * other_player_evaluation_current_action[h]
@@ -97,7 +97,7 @@ class Resolver:
             for child in state.children:
                 if isinstance(child, ChanceState): # NOTE: IF it is a chance state, then it has not yet been visited
                     other_player_evaluation_current_action, acting_player_evaluation_current_action = self.subtree_traversal_rollout(child, other_player_range, acting_player_range, end_stage, end_depth)
-                    for h in range(len(self.get_all_hole_pairs())): # NOTE: Scaled update of evaluations
+                    for h in range(len(self.get_all_hole_pairs())):
                         a = self.action_to_index["call"] # NOTE: QUICK FIX: ASSUMING CHANCE STATE IS ALWAYS THE RESULT OF A CALL
                         acting_player_evaluation[h] += state.get_strategy_matrix()[h][a] * acting_player_evaluation_current_action[h]
                         other_player_evaluation[h] += state.get_strategy_matrix()[h][a] * other_player_evaluation_current_action[h]
@@ -132,7 +132,7 @@ class Resolver:
             # NOTE: This should never be called using a pre-flop state
             acting_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
             other_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
-            return acting_eval, other_eval # TODO: TEMPORARY VALUES
+            return acting_eval, other_eval
         
         use_limited = self.poker_oracle.use_limited_deck
         
@@ -205,15 +205,13 @@ class Resolver:
     # NOTE Based on slides page 63
     def bayesian_range_update(self, acting_player_range, action, strategy_matrix) -> np.ndarray:
         # NOTE: For some reason actoins is sometimes root....
-        # if action == "root":
-        #     return acting_player_range
         prob_action_given_pair = strategy_matrix[:, self.action_to_index[action]]
         prob_action = np.sum(prob_action_given_pair) / np.sum(strategy_matrix)
         
         return acting_player_range * (prob_action_given_pair/prob_action)
 
 
-# MARK: Other helper function
+# MARK: Helper methods
 
     def get_all_hole_pairs(self) -> list[str]:
         return self.poker_oracle.get_all_hole_pair_keys()
@@ -293,7 +291,7 @@ class Resolver:
                 
                 
     def handle_nan_values(self, strategy_matrix: np.ndarray) -> np.ndarray:
-        # TODO: Something is wrong here. Elements in each row still sometimes sum to more than one!
+        # NOTE: Something is wrong here. Elements in each row still sometimes sum to more than one!
         for i in range(len(strategy_matrix)):
             nan_indices = np.argwhere(np.isnan(strategy_matrix[i]))
             # print("nan_indices",nan_indices)
@@ -342,7 +340,6 @@ if __name__ == "__main__":
     root_state = state_manager.generate_root_state(acting_player=game_manager.poker_agents[0], 
                                                 players=game_manager.poker_agents, 
                                                 public_cards=public_cards, 
-                                                # public_cards=[], 
                                                 pot=0, 
                                                 num_raises_left=game_manager.legal_num_raises_per_stage, 
                                                 bet_to_call=game_manager.current_bet,
@@ -354,8 +351,6 @@ if __name__ == "__main__":
     
     # Assuming alice is acting player
     
-    # NOTE: Hver state er koblet til en STRATEGI og en RANGE og EVALUATION for HVER SPILLER.
-    
     acting_player_range, other_player_range = resolver.get_initial_ranges(public_cards, game_manager.poker_agents[0].hole_cards)
     # NOTE: RUN from PRE-FLOP to SHOWDOWN takes SEVERAL HOURS. Still ends with nan values.
     # Try debugging with less stages!
@@ -364,7 +359,3 @@ if __name__ == "__main__":
     num_rollouts = 1
     
     strategy = resolver.resolve(root_state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts)
-    
-    # print("Action:", action)
-    # print("Modified range:", acting_player_range)
-    
