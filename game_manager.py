@@ -159,17 +159,13 @@ class HumanPlayer(PokerAgent):
         index_to_action = {"0": "fold", "1": "call", "2": "raise"}
         pot = game_snapshot["pot"]
         table_bet = game_snapshot["table_bet"]
-        all_player_bet = game_snapshot["all_player_bets"]
-        all_player_chips = game_snapshot["all_player_chips"]
         print(f"Player {self.name}'s turn!")
         print(f"Your hole cards: {hole_cards}")
         print(f"Current pot: {pot}")
         print(f"Bet on table: {table_bet}")
         print(f"Your current bet: {self.current_bet}")
-        print(f"Other players current bet: {all_player_bet}")
         print(f"Number of chips for call: {table_bet - self.current_bet if table_bet > self.current_bet else 0}")
         print(f"Your pile of chips: {self.num_chips}")
-        print(f"Other players piles of chips: {all_player_chips}")
         print("Choose action: 0 (fold), 1 (call), 2 (raise)")
         action_index = ""
         while action_index not in list(index_to_action.keys()):
@@ -387,13 +383,7 @@ class PokerGameManager:
                              "table_bet": self.current_bet,
                              "stage": self.current_stage
                              }
-            
-                        game_snapshot["all_player_bets"] = []
-                        game_snapshot["all_player_chips"] = []
-                        for round_player in self.current_hand_players:
-                            if not round_player.name == player.name: 
-                                game_snapshot["all_player_bets"].append((round_player.name, player.current_bet))
-                                game_snapshot["all_player_chips"].append((round_player.name, player.num_chips))
+
                         desired_action = player.get_action(self.public_cards, game_snapshot)
                     elif isinstance(player, ResolverPokerAgent):
                         game_snapshot = {
@@ -457,12 +447,6 @@ class PokerGameManager:
                     "stage": self.current_stage
                     }
                 
-                game_snapshot["all_player_bets"] = []
-                game_snapshot["all_player_chips"] = []
-                for player in self.current_hand_players:
-                    if not player.name == self.current_hand_players[i].name:
-                        game_snapshot["all_player_bets"].append((player.name, player.current_bet))
-                        game_snapshot["all_player_chips"].append((player.name, player.num_chips))
             if isinstance(players_in_order[i], ResolverPokerAgent) or isinstance(players_in_order[i], CombinationPokerAgent):
                 game_snapshot = {
                     "acting_player": players_in_order[i],
