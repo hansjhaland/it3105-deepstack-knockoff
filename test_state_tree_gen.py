@@ -71,7 +71,7 @@ state_manager.generate_subtree_to_given_stage_and_depth(turn_state,
                                                         end_depth=1)
 
 
-# MARK: River to showdoen
+# MARK: River to showdown
 public_cards = [*public_cards, *card_deck.deal(1)]
 river_state = state_manager.generate_root_state(acting_player=game_manager.poker_agents[0], 
                                                 players=game_manager.poker_agents, 
