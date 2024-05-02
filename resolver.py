@@ -129,7 +129,7 @@ class Resolver:
     def run_neural_network(self, stage: str, state: PlayerState, acting_player_range: np.ndarray, other_player_range: np.ndarray) -> tuple[np.ndarray]:
         
         if stage == "pre-flop":
-            # NOTE: This should never be called using a pre-flop state
+            # NOTE: This should never be called from a pre-flop state.
             acting_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
             other_eval = np.random.uniform(size=len(self.get_all_hole_pairs()))
             return acting_eval, other_eval
