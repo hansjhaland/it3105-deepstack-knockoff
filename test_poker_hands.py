@@ -178,7 +178,7 @@ p2_hole_cards = [
 ]
 
 # P1 should win
-print("Evaluation:", po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards), "Target:", 1)
+print("Evaluation, same hand ranking:", po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards), "Target:", 1)
 
 # Check both players different hand ranking
 public_cards = [
@@ -200,7 +200,10 @@ p2_hole_cards = [
 ]
 
 # P2 should win
-print("Evaluation", po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards), "Target:", -1)
+print("Evaluation, different hand ranking", po.evaluate_showdown(public_cards, p1_hole_cards, p2_hole_cards), "Target:", -1)
+
+# p2 shuld win
+print("Evaluation, different hand ranking, 3 public cards", po.evaluate_showdown(public_cards[:-2], p1_hole_cards, p2_hole_cards), "Target:", -1)
 print()
 
 
