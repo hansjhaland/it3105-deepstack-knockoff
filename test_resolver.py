@@ -51,7 +51,7 @@ end_depth = 1
 num_rollouts = 10
 pre_flop_strategy = resolver.resolve(pre_flop_state, initital_acting_ranges, initial_other_ranges, end_stage, end_depth, num_rollouts)
 print(pre_flop_strategy)
-# NOTE: 3 - 4 seconds with 10 rollouts
+# NOTE: 2 - 4 seconds with 10 rollouts
 print(f"Finished resolving form pre-flop to flop in {time.time() - start_time:.3f} seconds.")
 print()
 
@@ -74,7 +74,7 @@ end_stage = "turn"
 end_depth = 1
 flop_strategy = resolver.resolve(flop_state, initital_acting_ranges, initial_other_ranges, end_stage, end_depth, num_rollouts)
 print(flop_strategy)
-# NOTE: 3 - 4 seconds with 10 rollouts
+# NOTE: 2 - 4 seconds with 10 rollouts
 print(f"Finished resolving form flop to turn in {time.time() - start_time:.3f} seconds.")
 print()
 
@@ -97,7 +97,7 @@ end_stage = "river"
 end_depth = 1
 turn_strategy = resolver.resolve(turn_state, initital_acting_ranges, initial_other_ranges, end_stage, end_depth, num_rollouts)
 print(turn_strategy)
-# NOTE: 3 - 4 seconds with 10 rollouts
+# NOTE: 2 - 4 seconds with 10 rollouts
 print(f"Finished resolving form turn to river in {time.time() - start_time:.3f} seconds.")
 print()
 
@@ -121,6 +121,6 @@ end_depth = 1
 num_rollouts = 1 # NOTE: Decreased number of rollouts
 river_strategy = resolver.resolve(river_state, initital_acting_ranges, initial_other_ranges, end_stage, end_depth, num_rollouts)
 print(river_strategy)
-# NOTE: 351 seconds (almost 6 minutes) with 10 rollouts, 33 sconds with 1 rollout
+# NOTE: 351 seconds (almost 6 minutes) with 10 rollouts, 26 - 33 seconds with 1 rollout
 print(f"Finished resolving form river to showdown in {time.time() - start_time:.3f} seconds.")
 print()
