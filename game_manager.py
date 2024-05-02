@@ -52,12 +52,9 @@ class RolloutPokerAgent(PokerAgent):
     
     # Implementing get action for a pure rollout based agent
     def get_action(self, public_cards: list[Card], num_opponents: int, rollout_count: int, poker_oracle: PokerOracle) -> str:
-        # TODO: Should get probabilities from a pre-generated (and preferably saved) cheat sheet
-        # TODO: Probability thresholds should be initialization paramaters
-        # TODO: The probabilities could vary depending on stage of the game
-        # TODO: Should have a probaibility of bluffin, i.e. a probability of raining with a bad hand (when you actually want to fold)
         if public_cards == []:
             try:
+                # NOTE: Use cheat sheet if it exists for pre-flop stage
                 OPPONENTS = 6
                 ROLLOUTS = 1000
                 cheat_sheet = poker_oracle.load_cheat_sheet(OPPONENTS, ROLLOUTS)
@@ -110,14 +107,13 @@ class ResolverPokerAgent(PokerAgent):
         acting_player_range, other_player_range = resolver.get_initial_ranges(public_cards, self.hole_cards)
         end_stage = PokerStateManager.get_next_stage(game_snapshot["stage"])
         end_depth = 1 
-        num_rollouts = 1
+        num_rollouts = 1 if game_snapshot["stage"] == "river" else 10
         strategy = resolver.resolve(root_state, acting_player_range, other_player_range, end_stage, end_depth, num_rollouts)
         hole_pair_key = poker_oracle.get_hole_pair_key(self.hole_cards)
         all_hole_pair_keys = poker_oracle.get_all_hole_pair_keys()
         hole_pair_index = all_hole_pair_keys.index(hole_pair_key)
         strategy_entry: np.ndarray = strategy[hole_pair_index]
-        # NOTE: Try greedy apporach
-        # action_key = str(np.argmax(strategy_entry))
+        print(f"Player {self.name}'s hole pair:", *self.hole_cards)
         # NOTE: Choose action based on distribution from strategy
         # First need to ensure that prbabilities sum to one.
         try:
@@ -125,12 +121,11 @@ class ResolverPokerAgent(PokerAgent):
         except ValueError:
             strategy_entry = strategy_entry.round(decimals = 3)
             strategy_entry_normalized = strategy_entry / np.sum(strategy_entry)
-            print(strategy_entry, strategy_entry_normalized) # TODO: Need to fix issue where values in strategy_entry sums to MORE THAN ONE 
+            print("Normalization", strategy_entry, "->", strategy_entry_normalized) # TODO: Need to fix issue where values in strategy_entry sums to MORE THAN ONE 
             chosen_action_probaility = np.random.choice(strategy_entry, p=strategy_entry_normalized)
-        print(chosen_action_probaility, strategy_entry)
         # NOTE: Sometimes multiple actions have the same probability. To avoid this leading to folds, i choose that this should lead to the index of highest value.
         action_index = np.where(strategy_entry == chosen_action_probaility)[0][-1]
-        print(action_index)
+        print("Action index", action_index, "with probability", chosen_action_probaility, "from distribution", strategy_entry)
         action_key = str(action_index)
         key_to_action = {"0": "fold", "1": "call", "2": "raise"}
         action = key_to_action[action_key]
@@ -465,7 +460,7 @@ class PokerGameManager:
                 game_snapshot["all_player_bets"] = []
                 game_snapshot["all_player_chips"] = []
                 for player in self.current_hand_players:
-                    if not player.name == players_in_order[i].name:
+                    if not player.name == self.current_hand_players[i].name:
                         game_snapshot["all_player_bets"].append((player.name, player.current_bet))
                         game_snapshot["all_player_chips"].append((player.name, player.num_chips))
             if isinstance(players_in_order[i], ResolverPokerAgent) or isinstance(players_in_order[i], CombinationPokerAgent):
